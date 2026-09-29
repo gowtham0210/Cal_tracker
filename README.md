@@ -3,12 +3,23 @@
 | Folder | What it is |
 | --- | --- |
 | [`frontend/`](frontend) | Next.js app (see [frontend/README.md](frontend/README.md)) |
-| `backend/` | Coming soon |
+| [`backend/`](backend) | Express + SQLite API (see [backend/README.md](backend/README.md)) |
 
-## Run the frontend
+## Run locally
+
+Frontend on http://localhost:3000:
 
 ```bash
 cd frontend
+npm install
+npm run dev
+```
+
+Backend on http://localhost:4000:
+
+```bash
+cd backend
+cp .env.example .env
 npm install
 npm run dev
 ```
