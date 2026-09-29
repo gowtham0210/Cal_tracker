@@ -5,6 +5,7 @@ import { Droplet, Minus, Plus, RefreshCw, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { aiSuggestMeals } from "@/lib/ai";
 import { dayTotals, fmtInt } from "@/lib/calc";
+import { ApiError } from "@/lib/api";
 import type { MealIdea } from "@/lib/foods";
 import { useStore } from "@/lib/store";
 import type { Mood } from "@/lib/types";
@@ -211,13 +212,19 @@ export function SuggestionsCard({ date }: { date: string }) {
   const remaining = Math.round(profile.calorieGoal - t.net);
   const proteinLeft = Math.round(profile.macroGoals.protein - t.protein);
   const [ideas, setIdeas] = useState<MealIdea[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // The server works out what's left today from the saved logs.
   const fetchIdeas = useCallback(async () => {
-    const res = await aiSuggestMeals({ remaining, proteinLeft });
-    setIdeas(res);
+    try {
+      setIdeas(await aiSuggestMeals({ date }));
+      setError(null);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.problem.title : "Couldn't load suggestions.");
+    }
     setLoading(false);
-  }, [remaining, proteinLeft]);
+  }, [date]);
 
   const load = () => {
     setLoading(true);
@@ -227,11 +234,10 @@ export function SuggestionsCard({ date }: { date: string }) {
   useEffect(() => {
     let active = true;
     // Fetch once on mount; the refresh button re-fetches with the latest numbers
-    aiSuggestMeals({ remaining, proteinLeft }).then((res) => {
-      if (!active) return;
-      setIdeas(res);
-      setLoading(false);
-    });
+    aiSuggestMeals({ date })
+      .then((res) => active && (setIdeas(res), setError(null)))
+      .catch((err) => active && setError(err instanceof ApiError ? err.problem.title : "Couldn't load suggestions."))
+      .finally(() => active && setLoading(false));
     return () => {
       active = false;
     };
@@ -260,6 +266,10 @@ export function SuggestionsCard({ date }: { date: string }) {
             <Skeleton key={i} className="h-[74px]" />
           ))}
         </div>
+      ) : error ? (
+        <p role="alert" className="rounded-xl bg-surface-2 px-3.5 py-3 text-sm text-muted">
+          {error}
+        </p>
       ) : (
         <ul className="grid gap-2 sm:grid-cols-2">
           {ideas?.map((m) => (

@@ -1,9 +1,11 @@
 # Lighter — Weight Loss Tracker
 
-A frontend-only weight loss tracker built with **Next.js 16 (App Router)**, **Tailwind CSS v4**, **Recharts** and **Zustand**.
-All data is mock data, generated on first load and saved in `localStorage`. The AI features are simulated locally.
+The web app for Lighter, built with **Next.js 16 (App Router)**, **Tailwind CSS v4**, **Recharts** and **Zustand**.
+It talks to the Lighter API in [`../backend`](../backend) (contract: [`../api/openapi.yaml`](../api/openapi.yaml)). Everything is saved to the user's account; the AI features run on the backend with Azure OpenAI.
 
 ## Getting started
+
+Start the backend first (see [`../backend/README.md`](../backend/README.md)), then:
 
 ```bash
 npm install
@@ -11,7 +13,9 @@ npm run dev     # http://localhost:3000
 npm run build && npm start
 ```
 
-To regenerate the sample journey, go to **Settings → Reload demo data**. To start with an empty log, use **Start fresh**.
+The API URL defaults to `http://localhost:4000/api/v1`; set `NEXT_PUBLIC_API_URL` in `.env.local` to change it (see `.env.example`). It is inlined at build time.
+
+Create an account, then set your goals or choose **Explore with demo data**. Later you can reload the sample journey from **Settings → Reload demo data**, or empty your logs with **Start fresh**. If this browser has data from before accounts existed, onboarding offers to import it.
 
 ## Features
 
@@ -35,11 +39,13 @@ To regenerate the sample journey, go to **Settings → Reload demo data**. To st
 | 16 | Chat with your data | AI Coach |
 | 17 | Weekly AI coach summary with one tip | AI Coach |
 | 18 | CSV export (daily summary or per data type) | Settings → Export |
+| 19 | Accounts: sign up, sign in, sign out, delete account | /register, /login, Settings |
 
 ## UX notes
 
 - **Mobile first.** Bottom navigation with a central Quick add button; a sidebar on desktop. Dialogs open as bottom sheets on phones and centred modals on desktop.
 - **Fast logging.** Every log action is at most 2 taps from any screen. The current meal is picked automatically from the time of day.
+- **Instant, but saved.** Changes show immediately and are saved to the API in the background; if a save fails, the change is undone and an error toast explains why.
 - **Forgiving.** Deletes can be undone from the toast. AI results are always shown for review before saving. Inputs are validated inline.
 - **Accessible.** Semantic landmarks, a skip link, labelled controls, focus-trapped dialogs (Esc to close), visible focus rings, `aria-live` toasts and support for reduced motion.
 - **Light and dark themes.** Follows the system setting by default, with an override in Settings. The saved theme is applied before first paint, so there's no flash.
@@ -49,15 +55,16 @@ To regenerate the sample journey, go to **Settings → Reload demo data**. To st
 
 ```
 src/
-  app/            routes (thin server pages that export metadata)
+  app/
+    (app)/        signed-in pages, wrapped in the app shell and auth gate
+    (auth)/       login, register and onboarding
   views/          page-level client components
   components/     UI primitives, charts, widgets, dialogs, app shell
   lib/
-    store.ts      Zustand store persisted to localStorage
-    mock.ts       deterministic mock-data generator
-    ai.ts         simulated AI (swap for real API calls later)
+    api.ts        typed client for every API operation
+    session.ts    saved access token
+    store.ts      Zustand store: loads from the API, saves optimistically
+    ai.ts         AI features (backend calls; photos resized before upload)
     calc.ts       BMI, streaks, trends, badges, unit conversion
-    csv.ts        CSV export
+    import-local.ts  one-time import of pre-account browser data
 ```
-
-To connect real AI later, replace the functions in `src/lib/ai.ts` with calls to your backend. They are already async and the UI already handles loading states.

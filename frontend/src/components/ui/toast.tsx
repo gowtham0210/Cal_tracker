@@ -1,13 +1,13 @@
 "use client";
 
 import clsx from "clsx";
-import { CheckCircle2, Info, X } from "lucide-react";
+import { AlertCircle, CheckCircle2, Info, X } from "lucide-react";
 import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from "react";
 
 interface Toast {
   id: number;
   message: string;
-  tone: "success" | "info";
+  tone: "success" | "info" | "error";
   action?: { label: string; onClick: () => void };
 }
 
@@ -27,7 +27,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     (message, opts) => {
       const id = ++idRef.current;
       setToasts((t) => [...t.slice(-2), { id, message, tone: opts?.tone ?? "success", action: opts?.action }]);
-      setTimeout(() => dismiss(id), opts?.action ? 5000 : 2800);
+      setTimeout(() => dismiss(id), opts?.action || opts?.tone === "error" ? 5000 : 2800);
     },
     [dismiss],
   );
@@ -42,10 +42,13 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         {toasts.map((t) => (
           <div
             key={t.id}
+            role={t.tone === "error" ? "alert" : undefined}
             className="animate-fade-up pointer-events-auto flex w-full max-w-sm items-center gap-3 rounded-2xl bg-neutral-900 px-4 py-3 text-sm text-white shadow-xl dark:bg-neutral-100 dark:text-neutral-900"
           >
             {t.tone === "success" ? (
               <CheckCircle2 className="size-5 shrink-0 text-green-400 dark:text-green-600" />
+            ) : t.tone === "error" ? (
+              <AlertCircle className="size-5 shrink-0 text-red-400 dark:text-red-600" />
             ) : (
               <Info className="size-5 shrink-0 text-sky-400 dark:text-sky-600" />
             )}

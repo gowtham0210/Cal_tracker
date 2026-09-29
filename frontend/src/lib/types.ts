@@ -13,6 +13,7 @@ export interface FoodEntry extends Macros {
   name: string;
   calories: number;
   source?: "manual" | "ai-text" | "ai-photo" | "favorite";
+  favoriteId?: string | null;
   createdAt: number;
 }
 
@@ -24,12 +25,14 @@ export interface FavoriteFood extends Macros {
 }
 
 export interface WeightEntry {
+  /** The date; weigh-ins are one per day. */
   id: string;
   date: string;
   weight: number; // kg
 }
 
 export interface MeasurementEntry {
+  /** The date; measurements are one set per day. */
   id: string;
   date: string;
   waist?: number; // cm
@@ -72,6 +75,8 @@ export interface Profile {
   glassMl: number;
   units: UnitSystem;
   theme: Theme;
+  /** IANA time zone; decides what "today" means on the server. */
+  timeZone: string;
 }
 
 export interface ChatMessage {

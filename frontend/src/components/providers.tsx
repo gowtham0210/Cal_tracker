@@ -1,31 +1,71 @@
 "use client";
 
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
-import { useSession } from "@/lib/session";
-import { useStore } from "@/lib/store";
-import { ToastProvider } from "./ui/toast";
+import { configureAuth } from "@/lib/api";
+import { useCurrentUser, useSession } from "@/lib/session";
+import { onSyncError, useStore, type Status } from "@/lib/store";
+import { ToastProvider, useToast } from "./ui/toast";
 
-let hydratedOnce = false;
+// Every API call reads the token from the session; a 401 on a signed-in call ends the session.
+configureAuth({
+  token: () => useSession.getState().accessToken,
+  onUnauthorized: () => {
+    useSession.getState().signOut();
+    useStore.getState().reset();
+  },
+});
 
-/** True once persisted data has loaded on the client (mock data is seeded on first visit). */
-export function useHydrated() {
-  const [ready, setReady] = useState(hydratedOnce);
+let sessionHydrated = false;
+
+/** True once the saved session has been read from local storage (client only). */
+export function useSessionReady() {
+  const [ready, setReady] = useState(sessionHydrated);
   useEffect(() => {
-    if (hydratedOnce) return;
-    void useSession.persist.rehydrate();
-    const finish = () => {
-      if (!useStore.getState().seeded) useStore.getState().seed();
-      hydratedOnce = true;
+    if (sessionHydrated) return;
+    void Promise.resolve(useSession.persist.rehydrate()).then(() => {
+      sessionHydrated = true;
       setReady(true);
-    };
-    if (useStore.persist.hasHydrated()) finish();
-    else {
-      const unsub = useStore.persist.onFinishHydration(finish);
-      void useStore.persist.rehydrate();
-      return unsub;
-    }
+    });
   }, []);
   return ready;
+}
+
+/**
+ * Guards the app: signed-out visitors go to /login, users without a profile go to /onboarding,
+ * and everyone else gets their data loaded from the API. Returns the data status.
+ */
+export function useAppData(): Status {
+  const sessionReady = useSessionReady();
+  const user = useCurrentUser();
+  const status = useStore((s) => s.status);
+  const load = useStore((s) => s.load);
+  const router = useRouter();
+  const pathname = usePathname();
+
+  useEffect(() => {
+    if (!sessionReady) return;
+    if (!user) {
+      router.replace(`/login?next=${encodeURIComponent(pathname)}`);
+      return;
+    }
+    if (status === "idle") void load();
+    if (status === "needs-profile") router.replace("/onboarding");
+  }, [sessionReady, user, status, load, router, pathname]);
+
+  return sessionReady && user ? status : "loading";
+}
+
+/** Signs out and forgets the data on this device. */
+export function signOut() {
+  useSession.getState().signOut();
+  useStore.getState().reset();
+}
+
+function SyncErrors() {
+  const toast = useToast();
+  useEffect(() => onSyncError((message) => toast(message, { tone: "error" })), [toast]);
+  return null;
 }
 
 function ThemeSync() {
@@ -50,6 +90,7 @@ export function Providers({ children }: { children: ReactNode }) {
   return (
     <ToastProvider>
       <ThemeSync />
+      <SyncErrors />
       {children}
     </ToastProvider>
   );

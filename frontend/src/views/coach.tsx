@@ -4,8 +4,9 @@ import clsx from "clsx";
 import { ArrowDown, ArrowUp, Lightbulb, Minus, RefreshCw, SendHorizontal, Sparkles, Trash2 } from "lucide-react";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { Button, Card, CardHeader, PageHeader, Skeleton } from "@/components/ui";
-import { aiChat, aiWeeklySummary, CHAT_STARTERS, type WeeklySummary } from "@/lib/ai";
-import { formatDate, lastNDays } from "@/lib/date";
+import { aiWeeklySummary, CHAT_STARTERS, type WeeklySummary } from "@/lib/ai";
+import { api, ApiError } from "@/lib/api";
+import { formatDate, lastNDays, todayKey } from "@/lib/date";
 import { useStore } from "@/lib/store";
 
 /** Renders **bold** segments; everything else is plain text. */
@@ -27,12 +28,17 @@ function RichText({ text }: { text: string }) {
 
 function WeeklySummaryCard() {
   const [summary, setSummary] = useState<WeeklySummary | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const week = lastNDays(7);
 
   const fetchSummary = useCallback(async () => {
-    const res = await aiWeeklySummary(useStore.getState());
-    setSummary(res);
+    try {
+      setSummary(await aiWeeklySummary(todayKey()));
+      setError(null);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.problem.title : "Couldn't load your summary.");
+    }
     setLoading(false);
   }, []);
 
@@ -43,11 +49,10 @@ function WeeklySummaryCard() {
 
   useEffect(() => {
     let active = true;
-    aiWeeklySummary(useStore.getState()).then((res) => {
-      if (!active) return;
-      setSummary(res);
-      setLoading(false);
-    });
+    aiWeeklySummary(todayKey())
+      .then((res) => active && (setSummary(res), setError(null)))
+      .catch((err) => active && setError(err instanceof ApiError ? err.problem.title : "Couldn't load your summary."))
+      .finally(() => active && setLoading(false));
     return () => {
       active = false;
     };
@@ -66,7 +71,11 @@ function WeeklySummaryCard() {
           </Button>
         }
       />
-      {loading || !summary ? (
+      {!loading && error ? (
+        <p role="alert" className="rounded-xl bg-surface-2 px-3.5 py-3 text-sm text-muted">
+          {error}
+        </p>
+      ) : loading || !summary ? (
         <div className="space-y-3" aria-busy="true">
           <Skeleton className="h-5 w-11/12" />
           <Skeleton className="h-5 w-3/4" />
@@ -117,10 +126,12 @@ function WeeklySummaryCard() {
 
 function Chat() {
   const chat = useStore((s) => s.chat);
-  const pushChat = useStore((s) => s.pushChat);
+  const setChat = useStore((s) => s.setChat);
   const clearChat = useStore((s) => s.clearChat);
   const [input, setInput] = useState("");
   const [thinking, setThinking] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -130,13 +141,30 @@ function Chat() {
 
   const send = async (text = input) => {
     const q = text.trim();
-    if (!q || thinking) return;
+    if (!q || busy) return;
     setInput("");
-    pushChat({ role: "user", text: q });
+    setError(null);
+    setBusy(true);
+    const before = useStore.getState().chat;
+    const question = { id: "pending-q", role: "user" as const, text: q };
+    const answer = { id: "pending-a", role: "assistant" as const, text: "" };
+    setChat([...before, question]);
     setThinking(true);
-    const answer = await aiChat(q, useStore.getState());
-    pushChat({ role: "assistant", text: answer });
+    try {
+      // Show the answer as it streams in, then swap in the saved messages.
+      const saved = await api.askCoach(q, (piece) => {
+        answer.text += piece;
+        setThinking(false);
+        setChat([...before, question, { ...answer }]);
+      });
+      setChat([...before, { id: saved.question.id, role: "user", text: saved.question.text }, { id: saved.answer.id, role: "assistant", text: saved.answer.text }]);
+    } catch (err) {
+      setChat(before);
+      setInput(q);
+      setError(err instanceof ApiError ? err.problem.title : "Couldn't get an answer. Please try again.");
+    }
     setThinking(false);
+    setBusy(false);
     inputRef.current?.focus();
   };
 
@@ -204,7 +232,7 @@ function Chat() {
             <button
               key={s}
               onClick={() => send(s)}
-              disabled={thinking}
+              disabled={busy}
               className="shrink-0 rounded-full border border-border px-3 py-1 text-xs text-muted transition hover:border-brand hover:text-text disabled:opacity-50"
             >
               {s}
@@ -213,6 +241,11 @@ function Chat() {
         </div>
       )}
 
+      {error && (
+        <p role="alert" className="mx-3 mb-2 rounded-xl bg-danger/10 px-3.5 py-2.5 text-sm text-danger">
+          {error}
+        </p>
+      )}
       <form
         className="flex items-end gap-2 border-t border-border p-3"
         onSubmit={(e) => {
@@ -238,7 +271,7 @@ function Chat() {
           placeholder="Ask about your progress…"
           className="max-h-32 min-h-11 flex-1 resize-none rounded-xl border border-border bg-surface px-3.5 py-2.5 text-[15px] outline-none transition placeholder:text-subtle focus:border-brand focus:ring-4 focus:ring-brand/15"
         />
-        <Button type="submit" size="icon" className="size-11" aria-label="Send" disabled={!input.trim() || thinking}>
+        <Button type="submit" size="icon" className="size-11" aria-label="Send" disabled={!input.trim() || busy}>
           <SendHorizontal className="size-5" />
         </Button>
       </form>
@@ -258,7 +291,7 @@ export function CoachView() {
           <Chat />
         </div>
       </div>
-      <p className="text-center text-xs text-subtle">AI responses are simulated in this demo and use your local data only.</p>
+      <p className="text-center text-xs text-subtle">Answers are generated by AI from your own logs. They can be wrong, and they aren&apos;t medical advice.</p>
     </div>
   );
 }

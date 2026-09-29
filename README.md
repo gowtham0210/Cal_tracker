@@ -25,4 +25,6 @@ npm install
 npm run dev
 ```
 
-Set `JWT_SECRET` in `backend/.env` first (instructions in [backend/README.md](backend/README.md)). The frontend talks to `http://localhost:4000/api/v1` by default; set `NEXT_PUBLIC_API_URL` in `frontend/.env.local` to change it (see `frontend/.env.example`).
+Set `JWT_SECRET` in `backend/.env` first, and optionally the `AZURE_OPENAI_*` variables for the AI coach (see [backend/README.md](backend/README.md)). The frontend talks to `http://localhost:4000/api/v1` by default; set `NEXT_PUBLIC_API_URL` in `frontend/.env.local` to change it.
+
+Open http://localhost:3000, create an account, and either set your goals or explore with demo data.

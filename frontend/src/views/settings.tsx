@@ -1,14 +1,14 @@
 "use client";
 
-import { Download, FileSpreadsheet, Monitor, Moon, RotateCcw, Sun, Trash2, UserRound } from "lucide-react";
-import Link from "next/link";
+import { Download, FileSpreadsheet, LogOut, Monitor, Moon, RotateCcw, Sun, Trash2, UserRound } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { signOut } from "@/components/providers";
 import { Button, Card, CardHeader, Field, Input, PageHeader, Segmented, Sheet } from "@/components/ui";
 import { useToast } from "@/components/ui/toast";
 import { lengthIn, lengthOut, lUnit } from "@/lib/calc";
-import { buildCsv, downloadFile, type ExportKind } from "@/lib/csv";
-import { todayKey } from "@/lib/date";
-import { useCurrentUser } from "@/lib/session";
+import { api, ApiError } from "@/lib/api";
+import { downloadFile, type ExportKind } from "@/lib/csv";
 import { useStore } from "@/lib/store";
 import type { Theme, UnitSystem } from "@/lib/types";
 
@@ -78,19 +78,50 @@ export function SettingsView() {
   const { profile, updateProfile, resetDemo, clearAll } = s;
   const toast = useToast();
   const u = profile.units;
-  const [confirm, setConfirm] = useState<"reset" | "clear" | null>(null);
-  const user = useCurrentUser();
+  const [confirm, setConfirm] = useState<"reset" | "clear" | "delete" | null>(null);
+  const [working, setWorking] = useState(false);
+  const user = useStore((st) => st.user);
+  const router = useRouter();
+  const fail = (err: unknown, fallback: string) => toast(err instanceof ApiError ? err.problem.title : fallback, { tone: "error" });
   const saved = (msg = "Saved") => toast(msg);
 
-  const exportOne = (kind: ExportKind) => {
-    downloadFile(`lighter-${kind}-${todayKey()}.csv`, buildCsv(kind, useStore.getState()));
-    toast(`Exported ${kind} CSV`);
+  const download = async (kind: ExportKind) => {
+    const { filename, blob } = await api.exportCsv(kind);
+    downloadFile(filename, blob);
   };
-  const exportAll = () => {
-    EXPORTS.forEach((e, i) =>
-      setTimeout(() => downloadFile(`lighter-${e.kind}-${todayKey()}.csv`, buildCsv(e.kind, useStore.getState())), i * 250),
-    );
+  const exportOne = async (kind: ExportKind) => {
+    try {
+      await download(kind);
+      toast(`Exported ${kind} CSV`);
+    } catch (err) {
+      fail(err, "Couldn't export that. Please try again.");
+    }
+  };
+  const exportAll = async () => {
     toast("Exporting all data as CSV files");
+    try {
+      for (const e of EXPORTS) await download(e.kind);
+    } catch (err) {
+      fail(err, "Couldn't finish the export. Please try again.");
+    }
+  };
+  const confirmAction = async () => {
+    setWorking(true);
+    try {
+      if (confirm === "delete") {
+        await api.deleteMe();
+        signOut();
+        router.replace("/register");
+        return;
+      }
+      if (confirm === "reset") await resetDemo();
+      else await clearAll();
+      toast(confirm === "reset" ? "Demo data reloaded" : "All data cleared", { tone: "info" });
+      setConfirm(null);
+    } catch (err) {
+      fail(err, "That didn't work. Please try again.");
+    }
+    setWorking(false);
   };
 
   return (
@@ -245,18 +276,16 @@ export function SettingsView() {
         <CardHeader
           icon={<UserRound className="size-4" />}
           title="Account"
-          subtitle={user ? `Signed in as ${user.email}` : "Create an account to save your progress on the server"}
-          action={
-            !user && (
-              <Link
-                href="/register"
-                className="inline-flex h-9 items-center rounded-xl bg-brand px-3 text-sm font-medium text-brand-contrast hover:brightness-110"
-              >
-                Create account
-              </Link>
-            )
-          }
+          subtitle={user ? `Signed in as ${user.email}` : undefined}
         />
+        <div className="flex flex-wrap gap-3">
+          <Button variant="outline" onClick={signOut}>
+            <LogOut className="size-4" /> Sign out
+          </Button>
+          <Button variant="outline" className="text-danger" onClick={() => setConfirm("delete")}>
+            <Trash2 className="size-4" /> Delete account
+          </Button>
+        </div>
       </Card>
 
       <Card>
@@ -286,7 +315,7 @@ export function SettingsView() {
       </Card>
 
       <Card>
-        <CardHeader title="Data" subtitle="Everything is stored locally in this browser" />
+        <CardHeader title="Data" subtitle="Saved to your account and available on any device" />
         <div className="flex flex-wrap gap-3">
           <Button variant="outline" onClick={() => setConfirm("reset")}>
             <RotateCcw className="size-4" /> Reload demo data
@@ -300,27 +329,21 @@ export function SettingsView() {
       <Sheet
         open={!!confirm}
         onClose={() => setConfirm(null)}
-        title={confirm === "reset" ? "Reload demo data?" : "Delete all data?"}
+        title={confirm === "reset" ? "Reload demo data?" : confirm === "delete" ? "Delete your account?" : "Delete all data?"}
         description={
           confirm === "reset"
             ? "This replaces everything with the sample journey. Your current entries will be lost."
-            : "This permanently deletes all your logs. Export a CSV first if you want a backup."
+            : confirm === "delete"
+              ? "This permanently deletes your account and everything in it. Export a CSV first if you want a backup."
+              : "This permanently deletes all your logs. Your account, goals and start weight are kept. Export a CSV first if you want a backup."
         }
       >
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button variant="secondary" onClick={() => setConfirm(null)}>
             Cancel
           </Button>
-          <Button
-            variant="danger"
-            onClick={() => {
-              if (confirm === "reset") resetDemo();
-              else clearAll();
-              toast(confirm === "reset" ? "Demo data reloaded" : "All data cleared", { tone: "info" });
-              setConfirm(null);
-            }}
-          >
-            {confirm === "reset" ? "Reload demo" : "Delete everything"}
+          <Button variant="danger" loading={working} onClick={() => void confirmAction()}>
+            {confirm === "reset" ? "Reload demo" : confirm === "delete" ? "Delete account" : "Delete everything"}
           </Button>
         </div>
       </Sheet>

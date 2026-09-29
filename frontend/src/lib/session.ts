@@ -21,7 +21,7 @@ export const useSession = create<SessionState>()(
       signIn: (s) => set({ accessToken: s.accessToken, expiresAt: Date.now() + s.expiresIn * 1000, user: s.user }),
       signOut: () => set({ accessToken: null, expiresAt: null, user: null }),
     }),
-    // Hydrated in useHydrated() alongside the main store to avoid SSR mismatches.
+    // Hydrated in useSessionReady() on the client, to avoid SSR mismatches.
     { name: "cal-tracker-session", skipHydration: true },
   ),
 );

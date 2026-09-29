@@ -1,16 +1,15 @@
 "use client";
 
 import clsx from "clsx";
-import { Activity, BookHeart, Home, LineChart, Menu, MessageCircle, Plus, Scale, Settings, Trophy, UserPlus, Utensils } from "lucide-react";
+import { Activity, BookHeart, Home, LineChart, LogOut, Menu, MessageCircle, Plus, Scale, Settings, Trophy, Utensils } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { FoodDialog } from "../dialogs/food-dialog";
 import { ExerciseDialog, MeasurementDialog, MoreDialog, MORE_LINKS, QuickAddDialog, WeightDialog } from "../dialogs/other-dialogs";
-import { useHydrated } from "../providers";
-import { Skeleton } from "../ui";
+import { signOut, useAppData } from "../providers";
+import { Button, Skeleton } from "../ui";
 import { useUI } from "@/lib/ui";
-import { useCurrentUser } from "@/lib/session";
 import { useStore } from "@/lib/store";
 import { currentStreak } from "@/lib/calc";
 
@@ -48,7 +47,6 @@ function Sidebar() {
   const open = useUI((s) => s.open);
   const foods = useStore((s) => s.foods);
   const name = useStore((s) => s.profile?.name);
-  const user = useCurrentUser();
   const streak = foods ? currentStreak(foods) : 0;
 
   return (
@@ -76,15 +74,6 @@ function Sidebar() {
         })}
       </nav>
       <div className="space-y-2 border-t border-border pt-3">
-        {!user && (
-          <Link
-            href="/register"
-            className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-brand-strong transition hover:bg-brand-soft"
-          >
-            <UserPlus className="size-[18px]" />
-            Create account
-          </Link>
-        )}
         <Link
           href="/settings"
           aria-current={isActive(pathname, "/settings") ? "page" : undefined}
@@ -105,6 +94,14 @@ function Sidebar() {
               <p className="truncate text-sm font-medium">{name}</p>
               <p className="text-xs text-muted">🔥 {streak}-day streak</p>
             </div>
+            <button
+              onClick={signOut}
+              aria-label="Sign out"
+              title="Sign out"
+              className="grid size-8 place-items-center rounded-lg text-subtle transition hover:bg-border hover:text-text"
+            >
+              <LogOut className="size-4" />
+            </button>
           </div>
         )}
       </div>
@@ -211,8 +208,26 @@ function LoadingSkeleton() {
   );
 }
 
+function LoadError() {
+  const error = useStore((s) => s.loadError);
+  const load = useStore((s) => s.load);
+  return (
+    <div role="alert" className="mx-auto mt-16 max-w-sm text-center">
+      <p className="font-semibold">Couldn&apos;t load your data</p>
+      <p className="mt-1 text-sm text-muted">{error}</p>
+      <div className="mt-5 flex justify-center gap-2">
+        <Button onClick={() => void load()}>Try again</Button>
+        <Button variant="ghost" onClick={signOut}>
+          Sign out
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function AppShell({ children }: { children: ReactNode }) {
-  const ready = useHydrated();
+  const status = useAppData();
+  const ready = status === "ready";
   return (
     <div className="flex min-h-dvh">
       <a
@@ -226,7 +241,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <div className="flex min-w-0 flex-1 flex-col">
         <MobileHeader />
         <main id="main" className="mx-auto w-full max-w-6xl flex-1 px-4 pb-28 pt-5 sm:px-6 lg:px-10 lg:pb-12 lg:pt-8">
-          {ready ? children : <LoadingSkeleton />}
+          {ready ? children : status === "error" ? <LoadError /> : <LoadingSkeleton />}
         </main>
       </div>
       <BottomNav />

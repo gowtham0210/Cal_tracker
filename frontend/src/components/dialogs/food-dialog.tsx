@@ -4,6 +4,7 @@ import clsx from "clsx";
 import { Camera, Check, ImagePlus, PenLine, Sparkles, Star, Trash2, Wand2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { aiEstimatePhoto, aiParseFood } from "@/lib/ai";
+import { ApiError } from "@/lib/api";
 import { todayKey } from "@/lib/date";
 import type { ParsedFood } from "@/lib/foods";
 import { useStore } from "@/lib/store";
@@ -209,13 +210,18 @@ function DescribeTab({ meal, date }: { meal: MealType; date?: string }) {
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<(ParsedFood & { keep: boolean })[] | null>(null);
+  const toast = useToast();
 
   const run = async (value = text) => {
     if (!value.trim()) return;
     setLoading(true);
     setItems(null);
-    const res = await aiParseFood(value);
-    setItems(res.map((r) => ({ ...r, keep: true })));
+    try {
+      const res = await aiParseFood(value);
+      setItems(res.map((r) => ({ ...r, keep: true })));
+    } catch (err) {
+      toast(err instanceof ApiError ? err.problem.title : "Couldn't estimate that. Please try again.", { tone: "error" });
+    }
     setLoading(false);
   };
 
@@ -290,6 +296,7 @@ function PhotoTab({ meal, date }: { meal: MealType; date?: string }) {
   const [preview, setPreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<(ParsedFood & { keep: boolean })[] | null>(null);
+  const toast = useToast();
 
   useEffect(() => () => void (preview && URL.revokeObjectURL(preview)), [preview]);
 
@@ -298,8 +305,12 @@ function PhotoTab({ meal, date }: { meal: MealType; date?: string }) {
     setPreview(URL.createObjectURL(file));
     setItems(null);
     setLoading(true);
-    const res = await aiEstimatePhoto(file);
-    setItems(res.map((r) => ({ ...r, keep: true })));
+    try {
+      const res = await aiEstimatePhoto(file);
+      setItems(res.map((r) => ({ ...r, keep: true })));
+    } catch (err) {
+      toast(err instanceof ApiError ? err.problem.title : "Couldn't read that photo. Please try another.", { tone: "error" });
+    }
     setLoading(false);
   };
 
@@ -521,6 +532,7 @@ function FavoritesTab({ meal, date }: { meal: MealType; date?: string }) {
                   carbs: f.carbs,
                   fat: f.fat,
                   source: "favorite",
+                  favoriteId: f.id,
                 });
                 setAdded(f.id);
                 toast(`${f.name} added to ${MEAL_LABEL[meal]}`);

@@ -25,7 +25,7 @@ export interface Llm {
 
 export class AiUnavailable extends HttpError {
   constructor(detail: string) {
-    super(503, "ai-unavailable", "The AI coach is unavailable right now. Please try again later.", detail);
+    super(503, "ai-unavailable", "AI features are unavailable right now. Please try again later.", detail);
   }
 }
 
