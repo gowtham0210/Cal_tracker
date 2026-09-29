@@ -1,0 +1,2126 @@
+openapi: 3.2.0
+
+info:
+  title: Lighter API
+  summary: Backend API for the Lighter weight loss tracker.
+  version: 0.1.0
+  description: |
+    The contract between the Lighter frontend (`frontend/`) and backend (`backend/`).
+    It covers everything the frontend currently keeps in local storage, plus the
+    AI features that are mocked in `frontend/src/lib/ai.ts`.
+
+    ## Conventions
+
+    - **Auth.** Every operation needs a bearer token from `/auth/register` or
+      `/auth/login`, unless it says otherwise. All data belongs to the signed-in
+      user, so there is no user id in the paths.
+    - **Units.** The API always uses metric units: weight in **kg**, length in **cm**,
+      energy in **kcal**, macros in **grams**. `Profile.units` is a display
+      preference only; converting to pounds and inches is the client's job.
+    - **Dates and times.** Calendar days are `YYYY-MM-DD` (`format: date`) in the
+      user's time zone (`Profile.timeZone`). Timestamps are RFC 3339 in UTC.
+    - **One per day.** Weigh-ins, measurements, water and journal entries are
+      identified by their date, so they are written with an idempotent
+      `PUT /…/{date}` instead of `POST`.
+    - **Lists.** Collections are wrapped as `{ "data": [...] }`. Large collections
+      are paged with `limit` and an opaque `cursor`; follow `nextCursor` until it
+      is `null`.
+    - **Partial updates.** `PATCH` uses JSON Merge Patch
+      (`application/merge-patch+json`, RFC 7396).
+    - **Errors.** Every error is `application/problem+json` (RFC 9457).
+      Validation errors add an `errors` array with a JSON Pointer per field.
+    - **Field names** are camelCase and match `frontend/src/lib/types.ts`.
+
+servers:
+  - url: http://localhost:4000/api/v1
+    name: local
+    description: Local development server
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Auth
+    summary: Sign up and sign in
+    description: Create an account or sign in to get a bearer token.
+    kind: nav
+  - name: Account
+    summary: The signed-in user and their data
+    description: Read, change or delete the signed-in user, and bulk-reset their data.
+    kind: nav
+  - name: Profile
+    summary: Goals and preferences
+    description: Body stats, calorie and macro goals, water goal and display preferences.
+    kind: nav
+  - name: Logging
+    summary: Everything the user records day to day
+    description: Everything the user records day to day.
+    kind: nav
+  - name: Food
+    summary: Food log
+    description: Logged foods and AI estimates from text or photos.
+    parent: Logging
+    kind: nav
+  - name: Favorites
+    summary: Saved foods for quick logging
+    description: Saved foods that can be logged in one tap.
+    parent: Logging
+    kind: nav
+  - name: Body
+    summary: Weigh-ins and body measurements
+    description: Weigh-ins and waist, hip and chest measurements, one of each per day.
+    parent: Logging
+    kind: nav
+  - name: Exercise
+    summary: Workouts
+    description: Workouts with duration and calories burned.
+    parent: Logging
+    kind: nav
+  - name: Water
+    summary: Daily water intake
+    description: Glasses of water per day.
+    parent: Logging
+    kind: nav
+  - name: Journal
+    summary: Daily mood, energy, sleep and notes
+    description: Daily mood, energy, sleep, cravings and a note.
+    parent: Logging
+    kind: nav
+  - name: Insights
+    summary: Totals, trends and milestones computed from the logs
+    description: Totals, trends, projections and badges computed from the logs.
+    kind: nav
+  - name: Coach
+    summary: AI features
+    description: |
+      AI-backed endpoints. These are slower and more expensive than the others,
+      so they are rate limited and can return `429`.
+    kind: nav
+  - name: Export
+    summary: CSV downloads
+    description: CSV downloads of each log.
+    kind: nav
+
+paths:
+  # ---------------------------------------------------------------- Auth
+  /auth/register:
+    post:
+      tags: [Auth]
+      operationId: register
+      summary: Create an account
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          description: Account created and signed in.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      operationId: login
+      summary: Sign in
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Signed in.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          description: Email or password is wrong. The response does not say which.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+
+  # ---------------------------------------------------------------- Account
+  /me:
+    get:
+      tags: [Account]
+      operationId: getCurrentUser
+      summary: Get the signed-in user
+      responses:
+        "200":
+          description: The signed-in user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    patch:
+      tags: [Account]
+      operationId: updateCurrentUser
+      summary: Change name or email
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: "#/components/schemas/UserPatch"
+      responses:
+        "200":
+          description: The updated user.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    delete:
+      tags: [Account]
+      operationId: deleteCurrentUser
+      summary: Delete the account
+      description: Permanently deletes the user and all of their data.
+      responses:
+        "204":
+          description: Account deleted.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /me/data:
+    delete:
+      tags: [Account]
+      operationId: clearUserData
+      summary: Delete all logs
+      description: |
+        Deletes every food, favorite, weigh-in, measurement, workout, water,
+        journal and coach entry. The account and profile are kept.
+        Backs the "Clear all data" action in Settings.
+      responses:
+        "204":
+          description: All logs deleted.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /me/demo-data:
+    put:
+      tags: [Account]
+      operationId: loadDemoData
+      summary: Replace all logs with demo data
+      description: |
+        Replaces the user's logs and profile goals with about 120 days of generated
+        sample data. Backs the "Reset demo data" action in Settings.
+      responses:
+        "204":
+          description: Demo data loaded.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ---------------------------------------------------------------- Profile
+  /me/profile:
+    get:
+      tags: [Profile]
+      operationId: getProfile
+      summary: Get goals and preferences
+      responses:
+        "200":
+          description: The user's profile.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Profile"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: The user has not finished onboarding yet, so there is no profile.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+    put:
+      tags: [Profile]
+      operationId: replaceProfile
+      summary: Create or replace the profile
+      description: Used when onboarding. Setting `startWeight` also records a weigh-in on `startDate`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Profile"
+      responses:
+        "200":
+          description: Profile replaced.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Profile"
+        "201":
+          description: Profile created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Profile"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    patch:
+      tags: [Profile]
+      operationId: updateProfile
+      summary: Change some goals or preferences
+      description: |
+        Changing `startWeight` updates the weigh-in on `startDate`.
+        `macroGoals` is merged, so `{ "macroGoals": { "protein": 140 } }` changes only protein.
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: "#/components/schemas/ProfilePatch"
+            examples:
+              calorieGoal:
+                summary: Change the daily calorie goal
+                dataValue:
+                  calorieGoal: 1800
+      responses:
+        "200":
+          description: The updated profile.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Profile"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ---------------------------------------------------------------- Food
+  /food-entries:
+    get:
+      tags: [Food]
+      operationId: listFoodEntries
+      summary: List food entries
+      description: Returns entries oldest first. Pass `date` for one day, or `from` and `to` for a range.
+      parameters:
+        - $ref: "#/components/parameters/date"
+        - $ref: "#/components/parameters/from"
+        - $ref: "#/components/parameters/to"
+        - name: meal
+          in: query
+          schema:
+            $ref: "#/components/schemas/MealType"
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/cursor"
+      responses:
+        "200":
+          description: A page of food entries.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FoodEntryPage"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [Food]
+      operationId: createFoodEntry
+      summary: Log a food
+      description: Also used to undo a delete, by posting the removed entry again.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FoodEntry"
+            examples:
+              manual:
+                summary: A manually entered food
+                dataValue:
+                  date: "2026-09-29"
+                  meal: breakfast
+                  name: Oatmeal with banana
+                  calories: 265
+                  protein: 7
+                  carbs: 54
+                  fat: 3
+              fromFavorite:
+                summary: Logged from a favorite
+                dataValue:
+                  date: "2026-09-29"
+                  meal: snack
+                  name: Protein shake
+                  calories: 130
+                  protein: 25
+                  carbs: 4
+                  fat: 2
+                  source: favorite
+                  favoriteId: 3f6c1a2e-8a1b-4c3d-9e4f-5a6b7c8d9e0f
+      responses:
+        "201":
+          $ref: "#/components/responses/FoodEntryCreated"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /food-entries/{foodEntryId}:
+    parameters:
+      - $ref: "#/components/parameters/foodEntryId"
+    get:
+      tags: [Food]
+      operationId: getFoodEntry
+      summary: Get a food entry
+      responses:
+        "200":
+          description: The food entry.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FoodEntry"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Food]
+      operationId: updateFoodEntry
+      summary: Edit a food entry
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: "#/components/schemas/FoodEntryPatch"
+            examples:
+              calories:
+                summary: Correct the calories
+                dataValue:
+                  calories: 310
+      responses:
+        "200":
+          description: The updated food entry.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FoodEntry"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Food]
+      operationId: deleteFoodEntry
+      summary: Delete a food entry
+      responses:
+        "204":
+          description: Deleted.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /food-estimates:
+    post:
+      tags: [Food, Coach]
+      operationId: estimateFood
+      summary: Estimate foods from text or a photo
+      description: |
+        Turns a description ("2 eggs and a slice of toast") or a meal photo into a
+        list of foods with calories and macros. Nothing is saved; the client shows
+        the items for review and then logs the ones the user keeps.
+
+        Send JSON for text, or the raw image bytes with an image `Content-Type` for a photo.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FoodTextEstimateRequest"
+            examples:
+              text:
+                summary: Describe a meal in words
+                dataValue:
+                  text: 2 eggs and a slice of toast
+          image/jpeg: {}
+          image/png: {}
+          image/webp: {}
+      responses:
+        "200":
+          description: The foods that were recognised. `items` is empty when nothing matched.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FoodEstimate"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "413":
+          description: The photo is larger than 10 MB.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "415":
+          description: The body is not JSON or a JPEG, PNG or WebP image.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+  # ---------------------------------------------------------------- Favorites
+  /favorite-foods:
+    get:
+      tags: [Favorites]
+      operationId: listFavoriteFoods
+      summary: List favorite foods
+      responses:
+        "200":
+          description: All favorites, sorted by name.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/FavoriteFood"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [Favorites]
+      operationId: createFavoriteFood
+      summary: Save a favorite
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FavoriteFood"
+      responses:
+        "201":
+          description: Favorite saved.
+          headers:
+            Location:
+              $ref: "#/components/headers/Location"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FavoriteFood"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: A favorite with this name already exists (names are compared ignoring case).
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+
+  /favorite-foods/{favoriteFoodId}:
+    parameters:
+      - $ref: "#/components/parameters/favoriteFoodId"
+    delete:
+      tags: [Favorites]
+      operationId: deleteFavoriteFood
+      summary: Remove a favorite
+      description: Food entries logged from this favorite are kept; their `favoriteId` becomes `null`.
+      responses:
+        "204":
+          description: Deleted.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ---------------------------------------------------------------- Body
+  /weight-entries:
+    get:
+      tags: [Body]
+      operationId: listWeightEntries
+      summary: List weigh-ins
+      parameters:
+        - $ref: "#/components/parameters/from"
+        - $ref: "#/components/parameters/to"
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/cursor"
+      responses:
+        "200":
+          description: A page of weigh-ins, oldest first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WeightEntryPage"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /weight-entries/{date}:
+    parameters:
+      - $ref: "#/components/parameters/pathDate"
+    put:
+      tags: [Body]
+      operationId: putWeightEntry
+      summary: Log the weight for a day
+      description: Creates the weigh-in for this date, or replaces it if one exists.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WeightEntry"
+            examples:
+              weighIn:
+                dataValue:
+                  weight: 82.4
+      responses:
+        "200":
+          description: Weigh-in replaced.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WeightEntry"
+        "201":
+          description: Weigh-in created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WeightEntry"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    delete:
+      tags: [Body]
+      operationId: deleteWeightEntry
+      summary: Delete the weigh-in for a day
+      responses:
+        "204":
+          description: Deleted.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: This is the weigh-in on the profile's `startDate`. Change `startWeight` on the profile instead.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+
+  /measurement-entries:
+    get:
+      tags: [Body]
+      operationId: listMeasurementEntries
+      summary: List body measurements
+      parameters:
+        - $ref: "#/components/parameters/from"
+        - $ref: "#/components/parameters/to"
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/cursor"
+      responses:
+        "200":
+          description: A page of measurements, oldest first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeasurementEntryPage"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /measurement-entries/{date}:
+    parameters:
+      - $ref: "#/components/parameters/pathDate"
+    put:
+      tags: [Body]
+      operationId: putMeasurementEntry
+      summary: Log measurements for a day
+      description: Creates or replaces the measurements for this date. At least one of waist, hips or chest is required.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MeasurementEntry"
+            examples:
+              waistOnly:
+                summary: Only the waist was measured
+                dataValue:
+                  waist: 94.5
+      responses:
+        "200":
+          description: Measurements replaced.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeasurementEntry"
+        "201":
+          description: Measurements created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeasurementEntry"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    delete:
+      tags: [Body]
+      operationId: deleteMeasurementEntry
+      summary: Delete measurements for a day
+      responses:
+        "204":
+          description: Deleted.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ---------------------------------------------------------------- Exercise
+  /exercise-entries:
+    get:
+      tags: [Exercise]
+      operationId: listExerciseEntries
+      summary: List workouts
+      parameters:
+        - $ref: "#/components/parameters/date"
+        - $ref: "#/components/parameters/from"
+        - $ref: "#/components/parameters/to"
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/cursor"
+      responses:
+        "200":
+          description: A page of workouts, oldest first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExerciseEntryPage"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [Exercise]
+      operationId: createExerciseEntry
+      summary: Log a workout
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExerciseEntry"
+            examples:
+              walk:
+                dataValue:
+                  date: "2026-09-29"
+                  name: Walking
+                  minutes: 45
+                  calories: 203
+      responses:
+        "201":
+          description: Workout logged.
+          headers:
+            Location:
+              $ref: "#/components/headers/Location"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExerciseEntry"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /exercise-entries/{exerciseEntryId}:
+    parameters:
+      - $ref: "#/components/parameters/exerciseEntryId"
+    delete:
+      tags: [Exercise]
+      operationId: deleteExerciseEntry
+      summary: Delete a workout
+      responses:
+        "204":
+          description: Deleted.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ---------------------------------------------------------------- Water
+  /water-entries:
+    get:
+      tags: [Water]
+      operationId: listWaterEntries
+      summary: List daily water intake
+      description: Days with nothing logged are left out.
+      parameters:
+        - $ref: "#/components/parameters/from"
+        - $ref: "#/components/parameters/to"
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/cursor"
+      responses:
+        "200":
+          description: A page of water entries, oldest first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WaterEntryPage"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /water-entries/{date}:
+    parameters:
+      - $ref: "#/components/parameters/pathDate"
+    put:
+      tags: [Water]
+      operationId: putWaterEntry
+      summary: Set the glasses of water for a day
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WaterEntry"
+            examples:
+              five:
+                dataValue:
+                  glasses: 5
+      responses:
+        "200":
+          description: Water entry replaced.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WaterEntry"
+        "201":
+          description: Water entry created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WaterEntry"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ---------------------------------------------------------------- Journal
+  /journal-entries:
+    get:
+      tags: [Journal]
+      operationId: listJournalEntries
+      summary: List journal entries
+      parameters:
+        - $ref: "#/components/parameters/from"
+        - $ref: "#/components/parameters/to"
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/cursor"
+      responses:
+        "200":
+          description: A page of journal entries, oldest first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JournalEntryPage"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /journal-entries/{date}:
+    parameters:
+      - $ref: "#/components/parameters/pathDate"
+    get:
+      tags: [Journal]
+      operationId: getJournalEntry
+      summary: Get the journal entry for a day
+      responses:
+        "200":
+          description: The journal entry.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JournalEntry"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [Journal]
+      operationId: putJournalEntry
+      summary: Save the journal entry for a day
+      description: Creates or replaces the entry. Fields that are left out are cleared.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/JournalEntry"
+            examples:
+              goodDay:
+                dataValue:
+                  mood: 4
+                  energy: 3
+                  sleepHours: 7.5
+                  cravings: 1
+                  note: Energy was high after the morning walk.
+      responses:
+        "200":
+          description: Journal entry replaced.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JournalEntry"
+        "201":
+          description: Journal entry created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JournalEntry"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ---------------------------------------------------------------- Insights
+  /insights/overview:
+    get:
+      tags: [Insights]
+      operationId: getOverview
+      summary: Progress at a glance
+      description: Current weight, progress to goal, trend, projection, BMI and streaks. Backs the dashboard, Goals and Progress pages.
+      parameters:
+        - $ref: "#/components/parameters/asOf"
+      responses:
+        "200":
+          description: The overview.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Overview"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /insights/daily:
+    get:
+      tags: [Insights]
+      operationId: listDailySummaries
+      summary: Totals per day
+      description: One row per day in the range, including days with nothing logged. Backs the charts. The range can be at most 366 days.
+      parameters:
+        - $ref: "#/components/parameters/fromRequired"
+        - $ref: "#/components/parameters/toRequired"
+      responses:
+        "200":
+          description: One summary per day, oldest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/DailySummary"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /insights/badges:
+    get:
+      tags: [Insights]
+      operationId: listBadges
+      summary: Milestones and progress towards them
+      responses:
+        "200":
+          description: Every badge, earned or not.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Badge"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ---------------------------------------------------------------- Coach
+  /coach/messages:
+    get:
+      tags: [Coach]
+      operationId: listCoachMessages
+      summary: Chat history
+      parameters:
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/cursor"
+      responses:
+        "200":
+          description: A page of messages, oldest first.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoachMessagePage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [Coach]
+      operationId: sendCoachMessage
+      summary: Ask the coach a question
+      description: |
+        Saves the question, answers it from the user's own data and saves the answer.
+
+        Send `Accept: text/event-stream` to receive the answer as it is written.
+        The stream sends `delta` events with pieces of text, then one `done` event
+        with the saved message, or an `error` event if generation fails.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CoachQuestion"
+            examples:
+              progress:
+                dataValue:
+                  text: How much weight have I lost?
+      responses:
+        "201":
+          description: The saved question and the coach's answer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoachExchange"
+            text/event-stream:
+              itemSchema:
+                $ref: "#/components/schemas/CoachStreamEvent"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+    delete:
+      tags: [Coach]
+      operationId: clearCoachMessages
+      summary: Clear the chat history
+      responses:
+        "204":
+          description: History cleared.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /coach/weekly-summary:
+    get:
+      tags: [Coach]
+      operationId: getWeeklySummary
+      summary: This week's coaching summary
+      description: Compares the 7 days ending on `asOf` with the 7 days before.
+      parameters:
+        - $ref: "#/components/parameters/asOf"
+      responses:
+        "200":
+          description: The summary.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WeeklySummary"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+  /coach/meal-suggestions:
+    get:
+      tags: [Coach]
+      operationId: listMealSuggestions
+      summary: Meal ideas that fit what is left today
+      description: Uses the calories and protein remaining on `asOf`, preferring protein-dense ideas when protein is behind.
+      parameters:
+        - $ref: "#/components/parameters/asOf"
+        - name: meal
+          in: query
+          description: Only suggest ideas for this meal.
+          schema:
+            $ref: "#/components/schemas/MealType"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 10
+            default: 4
+      responses:
+        "200":
+          description: Suggestions, best fit first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/MealIdea"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+  # ---------------------------------------------------------------- Export
+  /exports/{kind}:
+    get:
+      tags: [Export]
+      operationId: exportCsv
+      summary: Download data as CSV
+      description: |
+        Column sets, all in metric units:
+
+        | kind | columns |
+        | --- | --- |
+        | `daily` | date, weight_kg, calories_in, calories_burned, net_calories, protein_g, carbs_g, fat_g, water_glasses, mood |
+        | `food` | date, meal, name, calories, protein, carbs, fat, source |
+        | `weight` | date, weight |
+        | `measurements` | date, waist, hips, chest |
+        | `exercise` | date, name, minutes, calories |
+        | `water` | date, glasses |
+        | `journal` | date, mood, energy, sleepHours, cravings, note |
+      parameters:
+        - name: kind
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [daily, food, weight, measurements, exercise, water, journal]
+      responses:
+        "200":
+          description: The CSV file.
+          headers:
+            Content-Disposition:
+              description: Suggests a file name, for example `attachment; filename="lighter-food.csv"`.
+              schema:
+                type: string
+          content:
+            text/csv:
+              schema:
+                type: string
+              examples:
+                weight:
+                  serializedValue: |
+                    date,weight
+                    2026-09-28,82.6
+                    2026-09-29,82.4
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: 'Access token from `/auth/register` or `/auth/login`, sent as `Authorization: Bearer <token>`.'
+
+  parameters:
+    date:
+      name: date
+      in: query
+      description: Only return entries on this day. Cannot be combined with `from` or `to`.
+      schema:
+        $ref: "#/components/schemas/Date"
+    from:
+      name: from
+      in: query
+      description: First day to include.
+      schema:
+        $ref: "#/components/schemas/Date"
+    to:
+      name: to
+      in: query
+      description: Last day to include.
+      schema:
+        $ref: "#/components/schemas/Date"
+    fromRequired:
+      name: from
+      in: query
+      required: true
+      description: First day to include.
+      schema:
+        $ref: "#/components/schemas/Date"
+    toRequired:
+      name: to
+      in: query
+      required: true
+      description: Last day to include.
+      schema:
+        $ref: "#/components/schemas/Date"
+    asOf:
+      name: asOf
+      in: query
+      description: The day to calculate for. Defaults to today in the user's time zone.
+      schema:
+        $ref: "#/components/schemas/Date"
+    limit:
+      name: limit
+      in: query
+      description: Maximum number of items to return.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 500
+        default: 100
+    cursor:
+      name: cursor
+      in: query
+      description: The `nextCursor` from the previous page.
+      schema:
+        type: string
+    pathDate:
+      name: date
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/Date"
+    foodEntryId:
+      name: foodEntryId
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/Id"
+    favoriteFoodId:
+      name: favoriteFoodId
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/Id"
+    exerciseEntryId:
+      name: exerciseEntryId
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/Id"
+
+  headers:
+    Location:
+      description: URL of the created resource.
+      schema:
+        type: string
+        format: uri-reference
+    RetryAfter:
+      description: Seconds to wait before trying again.
+      schema:
+        type: integer
+        minimum: 0
+
+  responses:
+    FoodEntryCreated:
+      description: Food logged.
+      headers:
+        Location:
+          $ref: "#/components/headers/Location"
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/FoodEntry"
+    ValidationFailed:
+      description: The request is malformed or a field is invalid.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+          examples:
+            invalidWeight:
+              summary: A field failed validation
+              dataValue:
+                type: https://lighter.app/problems/validation-failed
+                title: Your request is not valid.
+                status: 400
+                errors:
+                  - pointer: /weight
+                    detail: Must be greater than 0.
+    Unauthorized:
+      description: The bearer token is missing, invalid or expired.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    NotFound:
+      description: Nothing exists at this URL for the signed-in user.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    Conflict:
+      description: The request conflicts with existing data, such as an email that is already registered.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    TooManyRequests:
+      description: Too many AI requests. Wait for `Retry-After` seconds.
+      headers:
+        Retry-After:
+          $ref: "#/components/headers/RetryAfter"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+
+  schemas:
+    # ---------- Primitives
+    Id:
+      type: string
+      format: uuid
+      examples: [0390357f-60db-4363-aae2-7b7fafd0d1e8]
+    Date:
+      type: string
+      format: date
+      description: A calendar day, `YYYY-MM-DD`.
+      examples: ["2026-09-29"]
+    Timestamp:
+      type: string
+      format: date-time
+      examples: ["2026-09-29T07:42:10.512Z"]
+    Kcal:
+      type: number
+      minimum: 0
+      description: Kilocalories.
+    Grams:
+      type: number
+      minimum: 0
+    MealType:
+      type: string
+      enum: [breakfast, lunch, dinner, snack]
+    Macros:
+      type: object
+      description: Protein, carbs and fat in grams.
+      required: [protein, carbs, fat]
+      properties:
+        protein:
+          $ref: "#/components/schemas/Grams"
+        carbs:
+          $ref: "#/components/schemas/Grams"
+        fat:
+          $ref: "#/components/schemas/Grams"
+    Cursor:
+      type: [string, "null"]
+      description: Pass as `cursor` to get the next page. `null` on the last page.
+
+    # ---------- Auth and account
+    RegisterRequest:
+      type: object
+      additionalProperties: false
+      required: [email, name, password]
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        password:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 128
+          writeOnly: true
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+          writeOnly: true
+    Session:
+      type: object
+      required: [accessToken, tokenType, expiresIn, user]
+      properties:
+        accessToken:
+          type: string
+        tokenType:
+          type: string
+          const: Bearer
+        expiresIn:
+          type: integer
+          description: Seconds until the token expires.
+          examples: [3600]
+        user:
+          $ref: "#/components/schemas/User"
+    User:
+      type: object
+      required: [id, email, name, createdAt]
+      properties:
+        id:
+          $ref: "#/components/schemas/Id"
+          readOnly: true
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+        createdAt:
+          $ref: "#/components/schemas/Timestamp"
+          readOnly: true
+    UserPatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        name:
+          type: string
+          minLength: 1
+          maxLength: 80
+
+    # ---------- Profile
+    Profile:
+      type: object
+      additionalProperties: false
+      required:
+        [heightCm, startWeight, goalWeight, startDate, calorieGoal, macroGoals, trackMacros, waterGoal, glassMl, units, theme, timeZone]
+      properties:
+        heightCm:
+          type: number
+          exclusiveMinimum: 0
+          maximum: 300
+        startWeight:
+          type: number
+          exclusiveMinimum: 0
+          description: Weight in kg on `startDate`. Stored as the weigh-in for that day.
+        goalWeight:
+          type: number
+          exclusiveMinimum: 0
+          description: Target weight in kg.
+        startDate:
+          $ref: "#/components/schemas/Date"
+        calorieGoal:
+          type: integer
+          exclusiveMinimum: 0
+          description: Daily net calorie target (eaten minus burned).
+        macroGoals:
+          $ref: "#/components/schemas/Macros"
+        trackMacros:
+          type: boolean
+        waterGoal:
+          type: integer
+          minimum: 1
+          maximum: 30
+          description: Glasses per day.
+        glassMl:
+          type: integer
+          minimum: 1
+          maximum: 2000
+          description: Size of one glass in millilitres.
+        units:
+          type: string
+          enum: [metric, imperial]
+          description: How the client should display values. The API always uses metric.
+        theme:
+          type: string
+          enum: [system, light, dark]
+        timeZone:
+          type: string
+          description: IANA time zone. Decides what "today" means for this user.
+          examples: [Asia/Kolkata]
+        updatedAt:
+          $ref: "#/components/schemas/Timestamp"
+          readOnly: true
+      examples:
+        - heightCm: 175
+          startWeight: 92.4
+          goalWeight: 78
+          startDate: "2026-06-01"
+          calorieGoal: 1900
+          macroGoals: { protein: 130, carbs: 190, fat: 65 }
+          trackMacros: true
+          waterGoal: 8
+          glassMl: 250
+          units: metric
+          theme: system
+          timeZone: Asia/Kolkata
+    ProfilePatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        heightCm:
+          $ref: "#/components/schemas/Profile/properties/heightCm"
+        startWeight:
+          $ref: "#/components/schemas/Profile/properties/startWeight"
+        goalWeight:
+          $ref: "#/components/schemas/Profile/properties/goalWeight"
+        startDate:
+          $ref: "#/components/schemas/Date"
+        calorieGoal:
+          $ref: "#/components/schemas/Profile/properties/calorieGoal"
+        macroGoals:
+          type: object
+          additionalProperties: false
+          minProperties: 1
+          properties:
+            protein:
+              $ref: "#/components/schemas/Grams"
+            carbs:
+              $ref: "#/components/schemas/Grams"
+            fat:
+              $ref: "#/components/schemas/Grams"
+        trackMacros:
+          type: boolean
+        waterGoal:
+          $ref: "#/components/schemas/Profile/properties/waterGoal"
+        glassMl:
+          $ref: "#/components/schemas/Profile/properties/glassMl"
+        units:
+          $ref: "#/components/schemas/Profile/properties/units"
+        theme:
+          $ref: "#/components/schemas/Profile/properties/theme"
+        timeZone:
+          $ref: "#/components/schemas/Profile/properties/timeZone"
+
+    # ---------- Food
+    FoodSource:
+      type: string
+      enum: [manual, ai-text, ai-photo, favorite]
+      description: How the entry was added.
+    FoodEntry:
+      type: object
+      additionalProperties: false
+      description: |
+        One logged food. Name and nutrition are a snapshot: editing or deleting the
+        favorite it came from does not change it.
+      required: [id, date, meal, name, calories, protein, carbs, fat, createdAt]
+      properties:
+        id:
+          $ref: "#/components/schemas/Id"
+          readOnly: true
+        date:
+          $ref: "#/components/schemas/Date"
+        meal:
+          $ref: "#/components/schemas/MealType"
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        calories:
+          $ref: "#/components/schemas/Kcal"
+        protein:
+          $ref: "#/components/schemas/Grams"
+        carbs:
+          $ref: "#/components/schemas/Grams"
+        fat:
+          $ref: "#/components/schemas/Grams"
+        source:
+          $ref: "#/components/schemas/FoodSource"
+          default: manual
+        favoriteId:
+          type: [string, "null"]
+          format: uuid
+          default: null
+          description: The favorite this was logged from. Only allowed when `source` is `favorite`.
+        createdAt:
+          $ref: "#/components/schemas/Timestamp"
+          readOnly: true
+        updatedAt:
+          $ref: "#/components/schemas/Timestamp"
+          readOnly: true
+    FoodEntryPatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        date:
+          $ref: "#/components/schemas/Date"
+        meal:
+          $ref: "#/components/schemas/MealType"
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        calories:
+          $ref: "#/components/schemas/Kcal"
+        protein:
+          $ref: "#/components/schemas/Grams"
+        carbs:
+          $ref: "#/components/schemas/Grams"
+        fat:
+          $ref: "#/components/schemas/Grams"
+    FoodEntryPage:
+      type: object
+      required: [data, nextCursor]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/FoodEntry"
+        nextCursor:
+          $ref: "#/components/schemas/Cursor"
+    FoodTextEstimateRequest:
+      type: object
+      additionalProperties: false
+      required: [text]
+      properties:
+        text:
+          type: string
+          minLength: 1
+          maxLength: 1000
+          description: What was eaten, in plain words.
+    EstimatedFood:
+      allOf:
+        - $ref: "#/components/schemas/Macros"
+      type: object
+      required: [name, quantity, serving, calories, confidence]
+      properties:
+        name:
+          type: string
+        quantity:
+          type: number
+          exclusiveMinimum: 0
+          description: Number of servings.
+        serving:
+          type: string
+          description: What one serving is, in words.
+          examples: ["1 large", "~1 cup"]
+        calories:
+          $ref: "#/components/schemas/Kcal"
+        confidence:
+          type: string
+          enum: [high, medium, low]
+    FoodEstimate:
+      type: object
+      required: [source, items]
+      properties:
+        source:
+          type: string
+          enum: [ai-text, ai-photo]
+          description: Use as `FoodEntry.source` when logging these items.
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/EstimatedFood"
+      examples:
+        - source: ai-text
+          items:
+            - { name: Egg, quantity: 2, serving: 1 large, calories: 144, protein: 12, carbs: 0, fat: 10, confidence: high }
+            - { name: Toast, quantity: 1, serving: 1 slice, calories: 80, protein: 3, carbs: 14, fat: 1, confidence: high }
+
+    # ---------- Favorites
+    FavoriteFood:
+      type: object
+      additionalProperties: false
+      required: [id, name, meal, calories, protein, carbs, fat]
+      properties:
+        id:
+          $ref: "#/components/schemas/Id"
+          readOnly: true
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Unique per user, ignoring case.
+        meal:
+          $ref: "#/components/schemas/MealType"
+        calories:
+          $ref: "#/components/schemas/Kcal"
+        protein:
+          $ref: "#/components/schemas/Grams"
+        carbs:
+          $ref: "#/components/schemas/Grams"
+        fat:
+          $ref: "#/components/schemas/Grams"
+
+    # ---------- Body
+    WeightEntry:
+      type: object
+      additionalProperties: false
+      required: [date, weight]
+      properties:
+        date:
+          $ref: "#/components/schemas/Date"
+          readOnly: true
+          description: Taken from the URL.
+        weight:
+          type: number
+          exclusiveMinimum: 0
+          maximum: 700
+          description: Kilograms.
+        updatedAt:
+          $ref: "#/components/schemas/Timestamp"
+          readOnly: true
+    WeightEntryPage:
+      type: object
+      required: [data, nextCursor]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/WeightEntry"
+        nextCursor:
+          $ref: "#/components/schemas/Cursor"
+    MeasurementEntry:
+      type: object
+      additionalProperties: false
+      required: [date]
+      anyOf:
+        - required: [waist]
+        - required: [hips]
+        - required: [chest]
+      properties:
+        date:
+          $ref: "#/components/schemas/Date"
+          readOnly: true
+          description: Taken from the URL.
+        waist:
+          type: number
+          exclusiveMinimum: 0
+          description: Centimetres.
+        hips:
+          type: number
+          exclusiveMinimum: 0
+          description: Centimetres.
+        chest:
+          type: number
+          exclusiveMinimum: 0
+          description: Centimetres.
+        updatedAt:
+          $ref: "#/components/schemas/Timestamp"
+          readOnly: true
+    MeasurementEntryPage:
+      type: object
+      required: [data, nextCursor]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/MeasurementEntry"
+        nextCursor:
+          $ref: "#/components/schemas/Cursor"
+
+    # ---------- Exercise
+    ExerciseEntry:
+      type: object
+      additionalProperties: false
+      required: [id, date, name, minutes, calories, createdAt]
+      properties:
+        id:
+          $ref: "#/components/schemas/Id"
+          readOnly: true
+        date:
+          $ref: "#/components/schemas/Date"
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          examples: [Walking]
+        minutes:
+          type: integer
+          minimum: 1
+          maximum: 1440
+        calories:
+          $ref: "#/components/schemas/Kcal"
+          description: Kilocalories burned.
+        createdAt:
+          $ref: "#/components/schemas/Timestamp"
+          readOnly: true
+    ExerciseEntryPage:
+      type: object
+      required: [data, nextCursor]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExerciseEntry"
+        nextCursor:
+          $ref: "#/components/schemas/Cursor"
+
+    # ---------- Water
+    WaterEntry:
+      type: object
+      additionalProperties: false
+      required: [date, glasses]
+      properties:
+        date:
+          $ref: "#/components/schemas/Date"
+          readOnly: true
+          description: Taken from the URL.
+        glasses:
+          type: integer
+          minimum: 0
+          maximum: 30
+        updatedAt:
+          $ref: "#/components/schemas/Timestamp"
+          readOnly: true
+    WaterEntryPage:
+      type: object
+      required: [data, nextCursor]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/WaterEntry"
+        nextCursor:
+          $ref: "#/components/schemas/Cursor"
+
+    # ---------- Journal
+    JournalEntry:
+      type: object
+      additionalProperties: false
+      required: [date]
+      minProperties: 1
+      properties:
+        date:
+          $ref: "#/components/schemas/Date"
+          readOnly: true
+          description: Taken from the URL.
+        mood:
+          type: integer
+          minimum: 1
+          maximum: 5
+          description: 1 is awful, 5 is great.
+        energy:
+          type: integer
+          minimum: 1
+          maximum: 3
+          description: 1 is low, 3 is high.
+        sleepHours:
+          type: number
+          minimum: 0
+          maximum: 24
+        cravings:
+          type: integer
+          minimum: 0
+          maximum: 3
+          description: 0 is none, 3 is strong.
+        note:
+          type: string
+          maxLength: 2000
+        updatedAt:
+          $ref: "#/components/schemas/Timestamp"
+          readOnly: true
+    JournalEntryPage:
+      type: object
+      required: [data, nextCursor]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/JournalEntry"
+        nextCursor:
+          $ref: "#/components/schemas/Cursor"
+
+    # ---------- Insights
+    Overview:
+      type: object
+      required:
+        - asOf
+        - currentWeight
+        - startWeight
+        - goalWeight
+        - lostKg
+        - goalProgressPercent
+        - weeklyRateKg
+        - projectedGoalDate
+        - bmi
+        - bmiCategory
+        - currentStreak
+        - longestStreak
+      properties:
+        asOf:
+          $ref: "#/components/schemas/Date"
+        currentWeight:
+          type: number
+          description: Latest weigh-in in kg on or before `asOf`, or the start weight if there is none.
+        startWeight:
+          type: number
+        goalWeight:
+          type: number
+        lostKg:
+          type: number
+          description: Start weight minus current weight. Negative means weight was gained.
+        goalProgressPercent:
+          type: number
+          minimum: 0
+          maximum: 100
+        weeklyRateKg:
+          type: number
+          description: Trend over the last 28 days in kg per week. Negative means losing.
+        projectedGoalDate:
+          type: [string, "null"]
+          format: date
+          description: When the goal will be reached at the current rate. `null` if the trend is flat or going the wrong way.
+        bmi:
+          type: number
+        bmiCategory:
+          type: string
+          enum: [underweight, healthy, overweight, obese]
+        currentStreak:
+          type: integer
+          minimum: 0
+          description: Consecutive days with food logged, ending on `asOf`.
+        longestStreak:
+          type: integer
+          minimum: 0
+    DailySummary:
+      allOf:
+        - $ref: "#/components/schemas/Macros"
+      type: object
+      required: [date, calories, burned, net, weight, waterGlasses, mood]
+      properties:
+        date:
+          $ref: "#/components/schemas/Date"
+        calories:
+          $ref: "#/components/schemas/Kcal"
+          description: Eaten.
+        burned:
+          $ref: "#/components/schemas/Kcal"
+          description: Burned by exercise.
+        net:
+          type: number
+          description: Eaten minus burned.
+        weight:
+          type: [number, "null"]
+          description: Weigh-in on this day, if any.
+        waterGlasses:
+          type: [integer, "null"]
+        mood:
+          type: [integer, "null"]
+          minimum: 1
+          maximum: 5
+    Badge:
+      type: object
+      required: [id, title, description, emoji, earned, progress]
+      properties:
+        id:
+          type: string
+          examples: [streak-7]
+        title:
+          type: string
+          description: Uses the user's display units, for example "Down 5 kg".
+        description:
+          type: string
+        emoji:
+          type: string
+        earned:
+          type: boolean
+        progress:
+          type: number
+          minimum: 0
+          maximum: 1
+
+    # ---------- Coach
+    CoachMessage:
+      type: object
+      required: [id, role, text, createdAt]
+      properties:
+        id:
+          $ref: "#/components/schemas/Id"
+          readOnly: true
+        role:
+          type: string
+          enum: [user, assistant]
+        text:
+          type: string
+          description: Assistant messages may use Markdown bold (`**text**`).
+        createdAt:
+          $ref: "#/components/schemas/Timestamp"
+          readOnly: true
+    CoachMessagePage:
+      type: object
+      required: [data, nextCursor]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/CoachMessage"
+        nextCursor:
+          $ref: "#/components/schemas/Cursor"
+    CoachQuestion:
+      type: object
+      additionalProperties: false
+      required: [text]
+      properties:
+        text:
+          type: string
+          minLength: 1
+          maxLength: 2000
+    CoachExchange:
+      type: object
+      required: [question, answer]
+      properties:
+        question:
+          $ref: "#/components/schemas/CoachMessage"
+        answer:
+          $ref: "#/components/schemas/CoachMessage"
+    CoachStreamEvent:
+      description: One server-sent event while the answer is being written. `data` is a JSON string.
+      type: object
+      required: [event, data]
+      properties:
+        event:
+          type: string
+        data:
+          type: string
+        id:
+          type: string
+      oneOf:
+        - required: [event]
+          properties:
+            event:
+              const: delta
+            data:
+              contentMediaType: application/json
+              contentSchema:
+                type: object
+                required: [text]
+                properties:
+                  text:
+                    type: string
+                    description: The next piece of the answer.
+        - required: [event]
+          properties:
+            event:
+              const: done
+            data:
+              contentMediaType: application/json
+              contentSchema:
+                $ref: "#/components/schemas/CoachExchange"
+        - required: [event]
+          properties:
+            event:
+              const: error
+            data:
+              contentMediaType: application/json
+              contentSchema:
+                $ref: "#/components/schemas/Problem"
+    WeeklySummary:
+      type: object
+      required: [weekStart, weekEnd, headline, bullets, tip]
+      properties:
+        weekStart:
+          $ref: "#/components/schemas/Date"
+        weekEnd:
+          $ref: "#/components/schemas/Date"
+        headline:
+          type: string
+        bullets:
+          type: array
+          items:
+            type: object
+            required: [label, value, trend, good]
+            properties:
+              label:
+                type: string
+                examples: [Avg calories]
+              value:
+                type: string
+                description: Already formatted for display.
+                examples: ["1,842 kcal"]
+              trend:
+                type: string
+                enum: [up, down, flat]
+              good:
+                type: boolean
+                description: Whether this number is moving the right way.
+        tip:
+          type: string
+    MealIdea:
+      allOf:
+        - $ref: "#/components/schemas/Macros"
+      type: object
+      required: [name, meal, calories, tags]
+      properties:
+        name:
+          type: string
+        meal:
+          $ref: "#/components/schemas/MealType"
+        calories:
+          $ref: "#/components/schemas/Kcal"
+        tags:
+          type: array
+          items:
+            type: string
+          examples: [[high protein, 5 min]]
+
+    # ---------- Errors
+    Problem:
+      type: object
+      description: An error, as defined by RFC 9457.
+      properties:
+        type:
+          type: string
+          format: uri-reference
+          default: about:blank
+          description: Identifies the kind of error. Clients should branch on this, not on `title`.
+        title:
+          type: string
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+        detail:
+          type: string
+        instance:
+          type: string
+          format: uri-reference
+        errors:
+          type: array
+          description: One item per invalid field, for validation errors.
+          items:
+            type: object
+            required: [pointer, detail]
+            properties:
+              pointer:
+                type: string
+                description: JSON Pointer (RFC 6901) to the invalid field in the request body, or the parameter name.
+                examples: [/weight]
+              detail:
+                type: string

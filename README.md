@@ -4,6 +4,7 @@
 | --- | --- |
 | [`frontend/`](frontend) | Next.js app (see [frontend/README.md](frontend/README.md)) |
 | [`backend/`](backend) | Express + SQLite API (see [backend/README.md](backend/README.md)) |
+| [`api/`](api) | OpenAPI 3.2 contract between the two (see [api/README.md](api/README.md)) |
 
 ## Run locally
 
