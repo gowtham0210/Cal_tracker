@@ -126,7 +126,9 @@ const errorName = (err: unknown) => (err instanceof Error ? `${err.constructor.n
 
 function toHttpError(err: unknown) {
   if (err instanceof HttpError) return err;
-  const status = (err as { status?: number })?.status;
+  const { status, code } = (err ?? {}) as { status?: number; code?: string };
+  // Azure's content safety (including prompt-injection shields) can reject the request itself.
+  if (status === 400 && code === "content_filter") return new HttpError(400, "content-filtered", "That request can't be processed. Try rephrasing it.");
   if (status === 429) return new AiUnavailable("The AI service is busy.");
   return new AiUnavailable("The AI service did not respond.");
 }

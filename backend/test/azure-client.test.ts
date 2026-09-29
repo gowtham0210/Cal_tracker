@@ -4,12 +4,13 @@ import { z } from "zod";
 import { AzureLlm } from "../src/ai/llm.js";
 
 // Exercises the real Azure client against a fake HTTP server, to check the wire format.
-function fakeAzure(responses: (object | number)[], apiVersion = "2024-10-21") {
+function fakeAzure(responses: (object | number | { status: number; body: object })[], apiVersion = "2024-10-21") {
   const requests: { url: string; headers: Headers; body: any }[] = [];
   const fetchImpl = (async (url: string, init: RequestInit) => {
     requests.push({ url: String(url), headers: new Headers(init.headers), body: JSON.parse(String(init.body)) });
     const next = responses.shift()!;
     if (typeof next === "number") return new Response(JSON.stringify({ error: { message: "nope" } }), { status: next, headers: { "content-type": "application/json" } });
+    if ("status" in next && "body" in next) return new Response(JSON.stringify(next.body), { status: next.status as number, headers: { "content-type": "application/json" } });
     return new Response(JSON.stringify(next), { status: 200, headers: { "content-type": "application/json" } });
   }) as unknown as typeof fetch;
   const llm = new AzureLlm(
@@ -62,6 +63,9 @@ describe("AzureLlm", () => {
   test("maps a content filter stop to 400 and provider errors to 503", async () => {
     await assert.rejects(fakeAzure([completion("", "content_filter")]).llm.json(req, { prompt: "t@v1" }), (e: any) => e.status === 400 && e.slug === "content-filtered");
     await assert.rejects(fakeAzure([429]).llm.json(req, { prompt: "t@v1" }), (e: any) => e.status === 503);
+    // Azure's prompt shield rejects the request before generating anything.
+    const shield = { status: 400, body: { error: { code: "content_filter", message: "The response was filtered due to the prompt triggering Azure OpenAI's content management policy.", innererror: { code: "ResponsibleAIPolicyViolation" } } } };
+    await assert.rejects(fakeAzure([shield]).llm.json(req, { prompt: "t@v1" }), (e: any) => e.status === 400 && e.slug === "content-filtered");
     await assert.rejects(fakeAzure([500]).llm.json(req, { prompt: "t@v1" }), (e: any) => e.status === 503);
   });
 });
