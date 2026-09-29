@@ -1,12 +1,14 @@
 "use client";
 
-import { Download, FileSpreadsheet, Monitor, Moon, RotateCcw, Sun, Trash2 } from "lucide-react";
+import { Download, FileSpreadsheet, Monitor, Moon, RotateCcw, Sun, Trash2, UserRound } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 import { Button, Card, CardHeader, Field, Input, PageHeader, Segmented, Sheet } from "@/components/ui";
 import { useToast } from "@/components/ui/toast";
 import { lengthIn, lengthOut, lUnit } from "@/lib/calc";
 import { buildCsv, downloadFile, type ExportKind } from "@/lib/csv";
 import { todayKey } from "@/lib/date";
+import { useCurrentUser } from "@/lib/session";
 import { useStore } from "@/lib/store";
 import type { Theme, UnitSystem } from "@/lib/types";
 
@@ -77,6 +79,7 @@ export function SettingsView() {
   const toast = useToast();
   const u = profile.units;
   const [confirm, setConfirm] = useState<"reset" | "clear" | null>(null);
+  const user = useCurrentUser();
   const saved = (msg = "Saved") => toast(msg);
 
   const exportOne = (kind: ExportKind) => {
@@ -237,6 +240,24 @@ export function SettingsView() {
           )}
         </Card>
       </div>
+
+      <Card>
+        <CardHeader
+          icon={<UserRound className="size-4" />}
+          title="Account"
+          subtitle={user ? `Signed in as ${user.email}` : "Create an account to save your progress on the server"}
+          action={
+            !user && (
+              <Link
+                href="/register"
+                className="inline-flex h-9 items-center rounded-xl bg-brand px-3 text-sm font-medium text-brand-contrast hover:brightness-110"
+              >
+                Create account
+              </Link>
+            )
+          }
+        />
+      </Card>
 
       <Card>
         <CardHeader

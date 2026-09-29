@@ -1,7 +1,7 @@
 "use client";
 
 import clsx from "clsx";
-import { Activity, BookHeart, Home, LineChart, Menu, MessageCircle, Plus, Scale, Settings, Trophy, Utensils } from "lucide-react";
+import { Activity, BookHeart, Home, LineChart, Menu, MessageCircle, Plus, Scale, Settings, Trophy, UserPlus, Utensils } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
@@ -10,6 +10,7 @@ import { ExerciseDialog, MeasurementDialog, MoreDialog, MORE_LINKS, QuickAddDial
 import { useHydrated } from "../providers";
 import { Skeleton } from "../ui";
 import { useUI } from "@/lib/ui";
+import { useCurrentUser } from "@/lib/session";
 import { useStore } from "@/lib/store";
 import { currentStreak } from "@/lib/calc";
 
@@ -28,7 +29,7 @@ function isActive(pathname: string, href: string) {
   return href === "/" ? pathname === "/" : pathname.startsWith(href);
 }
 
-function Logo() {
+export function Logo() {
   return (
     <Link href="/" className="flex items-center gap-2.5 px-2 font-semibold tracking-tight">
       <span className="grid size-9 place-items-center rounded-xl bg-brand text-brand-contrast shadow-sm">
@@ -47,6 +48,7 @@ function Sidebar() {
   const open = useUI((s) => s.open);
   const foods = useStore((s) => s.foods);
   const name = useStore((s) => s.profile?.name);
+  const user = useCurrentUser();
   const streak = foods ? currentStreak(foods) : 0;
 
   return (
@@ -74,6 +76,15 @@ function Sidebar() {
         })}
       </nav>
       <div className="space-y-2 border-t border-border pt-3">
+        {!user && (
+          <Link
+            href="/register"
+            className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-brand-strong transition hover:bg-brand-soft"
+          >
+            <UserPlus className="size-[18px]" />
+            Create account
+          </Link>
+        )}
         <Link
           href="/settings"
           aria-current={isActive(pathname, "/settings") ? "page" : undefined}

@@ -15,10 +15,10 @@ The file is valid against the official OpenAPI 3.2 JSON Schemas. Redocly's `reco
 
 | Spec | Backend now | Needs |
 | --- | --- | --- |
-| Base path `/api/v1` | `/api` | Mount routes under `/api/v1` |
-| Bearer token from `/auth/register` and `/auth/login` | Temporary `X-User-Id` header | Password hashing, token issuing, a `password_hash` column |
+| Base path `/api/v1` | Auth uses `/api/v1`; weights are still on `/api` | Move the remaining routes under `/api/v1` |
+| Bearer token from `/auth/register` and `/auth/login` | `/auth/register` is done and issues tokens; weights still use the temporary `X-User-Id` header | `/auth/login`, and middleware that checks the bearer token |
 | `PUT /weight-entries/{date}` | `POST /api/weights` | Change the route to use the date as the key |
 | `Profile.timeZone` | No column | New migration |
 | Coach chat history | No table | New `coach_messages` migration |
-| Errors as `application/problem+json` | `{ "error": ... }` | Shared error handler |
-| Timestamps as RFC 3339 strings | Epoch ms in the database | Convert when building responses |
+| Errors as `application/problem+json` | Done for auth and unknown routes; weights still return `{ "error": ... }` | Use the shared error handler in the weights routes |
+| Timestamps as RFC 3339 strings | Done for auth | Convert in the other routes too |

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
+import { useSession } from "@/lib/session";
 import { useStore } from "@/lib/store";
 import { ToastProvider } from "./ui/toast";
 
@@ -11,6 +12,7 @@ export function useHydrated() {
   const [ready, setReady] = useState(hydratedOnce);
   useEffect(() => {
     if (hydratedOnce) return;
+    void useSession.persist.rehydrate();
     const finish = () => {
       if (!useStore.getState().seeded) useStore.getState().seed();
       hydratedOnce = true;
