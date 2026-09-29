@@ -1,4 +1,4 @@
-import { AzureOpenAI } from "openai";
+import OpenAI, { AzureOpenAI } from "openai";
 import type { z } from "zod";
 import { HttpError } from "../http/problem.js";
 
@@ -35,14 +35,19 @@ function log(meta: CallMeta, fields: Record<string, unknown>) {
 }
 
 export class AzureLlm implements Llm {
-  private client: AzureOpenAI;
+  private client: OpenAI;
 
   constructor(
     private cfg: { endpoint: string; apiKey: string; deployment: string; apiVersion: string },
     opts: { fetch?: typeof fetch; maxRetries?: number } = {},
   ) {
     // The SDK retries 429s and 5xx with backoff, honouring Retry-After.
-    this.client = new AzureOpenAI({ ...cfg, maxRetries: opts.maxRetries ?? 2, fetch: opts.fetch });
+    const common = { apiKey: cfg.apiKey, maxRetries: opts.maxRetries ?? 2, fetch: opts.fetch };
+    this.client =
+      cfg.apiVersion === "v1"
+        ? // Azure's v1 API (Microsoft's recommendation): no dated api-version; the deployment is the model name.
+          new OpenAI({ ...common, baseURL: `${cfg.endpoint.replace(/\/+$/, "")}/openai/v1/`, defaultHeaders: { "api-key": cfg.apiKey } })
+        : new AzureOpenAI({ ...common, endpoint: cfg.endpoint, deployment: cfg.deployment, apiVersion: cfg.apiVersion });
   }
 
   async json<S extends z.ZodType>(req: Parameters<Llm["json"]>[0] & { schema: S }, meta: CallMeta): Promise<z.output<S>> {

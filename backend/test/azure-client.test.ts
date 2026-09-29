@@ -4,7 +4,7 @@ import { z } from "zod";
 import { AzureLlm } from "../src/ai/llm.js";
 
 // Exercises the real Azure client against a fake HTTP server, to check the wire format.
-function fakeAzure(responses: (object | number)[]) {
+function fakeAzure(responses: (object | number)[], apiVersion = "2024-10-21") {
   const requests: { url: string; headers: Headers; body: any }[] = [];
   const fetchImpl = (async (url: string, init: RequestInit) => {
     requests.push({ url: String(url), headers: new Headers(init.headers), body: JSON.parse(String(init.body)) });
@@ -13,7 +13,7 @@ function fakeAzure(responses: (object | number)[]) {
     return new Response(JSON.stringify(next), { status: 200, headers: { "content-type": "application/json" } });
   }) as unknown as typeof fetch;
   const llm = new AzureLlm(
-    { endpoint: "https://example-resource.openai.azure.com", apiKey: "test-key", deployment: "gpt-4o-mini", apiVersion: "2024-10-21" },
+    { endpoint: "https://example-resource.openai.azure.com/", apiKey: "test-key", deployment: "gpt-4o-mini", apiVersion },
     { fetch: fetchImpl, maxRetries: 0 },
   );
   return { llm, requests };
@@ -41,6 +41,15 @@ describe("AzureLlm", () => {
     assert.deepEqual(r.body.response_format, { type: "json_schema", json_schema: { name: "t", strict: true, schema: { type: "object" } } });
     assert.equal(r.body.max_completion_tokens, 50);
     assert.equal(r.body.temperature, undefined, "no temperature, so reasoning models work too");
+  });
+
+  test("with apiVersion v1, calls /openai/v1 with the deployment as the model", async () => {
+    const { llm, requests } = fakeAzure([completion('{"n":3}')], "v1");
+    assert.deepEqual(await llm.json(req, { prompt: "t@v1" }), { n: 3 });
+    const r = requests[0];
+    assert.equal(r.url, "https://example-resource.openai.azure.com/openai/v1/chat/completions");
+    assert.equal(r.body.model, "gpt-4o-mini");
+    assert.equal(r.headers.get("api-key"), "test-key");
   });
 
   test("retries once when the output fails validation, then gives up with a 503", async () => {

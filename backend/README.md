@@ -28,8 +28,8 @@ node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
 | `ACCESS_TOKEN_TTL` | `604800` | Seconds (7 days); there are no refresh tokens yet |
 | `AZURE_OPENAI_ENDPOINT` | — | e.g. `https://<resource>.openai.azure.com` |
 | `AZURE_OPENAI_API_KEY` | — | |
-| `AZURE_OPENAI_DEPLOYMENT` | — | Deployment name; use a vision model (e.g. gpt-4o, gpt-4.1) for photo estimates |
-| `AZURE_OPENAI_API_VERSION` | — | e.g. `2024-10-21`; `AZURE_OPENAI__API_VERSION` is also accepted |
+| `AZURE_OPENAI_DEPLOYMENT` | — | Deployment name; use a model that accepts images (e.g. gpt-6-luna) for photo estimates |
+| `AZURE_OPENAI_API_VERSION` | — | `v1` (recommended: Azure's v1 API, no dated version) or a dated version such as `2024-10-21`; `AZURE_OPENAI__API_VERSION` is also accepted |
 
 Without the Azure variables the API still runs: food estimates and chat return `503`, while the weekly summary and meal ideas fall back to rule-based answers.
 
