@@ -1,18 +1,21 @@
 "use client";
 
 import clsx from "clsx";
-import { BookOpen, Check, ChevronLeft, ChevronRight, Loader2, PanelLeftClose, PencilLine } from "lucide-react";
+import { BookOpen, Check, ChevronLeft, ChevronRight, Copy, Eraser, Loader2, PanelLeftClose, PencilLine } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button, Card, PageHeader, Sheet, Skeleton } from "@/components/ui";
+import type { MenuItem } from "@/components/ui/menu";
 import type { PlanItem } from "@/lib/api";
 import { addDays, todayKey } from "@/lib/date";
 import { usePlan } from "@/lib/plan-store";
 import { useMediaQuery } from "@/lib/use-media-query";
-import { mondayOf, weekLabel } from "@/lib/week";
+import { longDay, mondayOf, weekLabel } from "@/lib/week";
 import { AddFoodSheet, type SlotTarget } from "./add-food-sheet";
+import { CopyDaySheet } from "./copy-day-sheet";
 import { DayView } from "./day-view";
 import { FoodLibrary } from "./food-library";
-import { PortionSheet } from "./portion-sheet";
+import { ItemSheet } from "./item-sheet";
+import { useUndoable } from "./use-undoable";
 import { WeekGrid } from "./week-grid";
 import { WeekSummary } from "./week-summary";
 
@@ -80,6 +83,9 @@ export function PlanView() {
   const [portionFor, setPortionFor] = useState<string | null>(null);
   const [addTo, setAddTo] = useState<SlotTarget | null>(null);
   const [librarySheet, setLibrarySheet] = useState(false);
+  const [copyFrom, setCopyFrom] = useState<string | null>(null);
+  const undoable = useUndoable();
+  const setDayItems = usePlan((s) => s.setDay);
   const wide = useMediaQuery("(min-width: 1024px)");
   const roomy = useMediaQuery("(min-width: 1536px)");
   const [libraryPanel, setLibraryPanel] = useState<boolean | null>(null);
@@ -87,6 +93,14 @@ export function PlanView() {
 
   const { plan, loading, error, load } = usePlan();
   useEffect(() => void load(monday), [monday, load]);
+  // Once a week has had food in it, keep showing the planner even if it's cleared, so the user
+  // keeps their place (and the Undo toast still makes sense).
+  const hasItems = !!plan && plan.weekStart === monday && plan.items.length > 0;
+  useEffect(() => {
+    // Syncing from the server's plan into local UI state; runs at most once per week.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (hasItems) setBuilding((b) => (b[monday] ? b : { ...b, [monday]: true }));
+  }, [hasItems, monday]);
 
   const changeWeek = (m: string) => {
     setMonday(m);
@@ -96,6 +110,13 @@ export function PlanView() {
   };
 
   const portionItem: PlanItem | null = plan?.items.find((i) => i.id === portionFor) ?? null;
+  const dayActions = (date: string): MenuItem[] => {
+    const hasFood = plan?.items.some((i) => i.date === date) ?? false;
+    return [
+      { label: "Copy day to…", icon: <Copy className="size-4" />, onSelect: () => setCopyFrom(date), disabled: !hasFood },
+      { label: "Clear day", icon: <Eraser className="size-4" />, danger: true, disabled: !hasFood, onSelect: () => undoable([date], () => setDayItems(date, []), `Cleared ${longDay(date)}`) },
+    ];
+  };
   const empty = plan && plan.items.length === 0 && !building[monday];
 
   return (
@@ -147,9 +168,9 @@ export function PlanView() {
           <>
             <WeekSummary plan={plan} />
             {wide ? (
-              <WeekGrid plan={plan} onOpen={(i) => setPortionFor(i.id)} onAdd={setAddTo} />
+              <WeekGrid plan={plan} onOpen={(i) => setPortionFor(i.id)} onAdd={setAddTo} dayActions={dayActions} />
             ) : (
-              <DayView plan={plan} day={day} onDay={setDay} onOpen={(i) => setPortionFor(i.id)} onAdd={setAddTo} />
+              <DayView plan={plan} day={day} onDay={setDay} onOpen={(i) => setPortionFor(i.id)} onAdd={setAddTo} dayActions={dayActions} />
             )}
           </>
         )}
@@ -159,7 +180,8 @@ export function PlanView() {
         <FoodLibrary className="h-[60dvh]" />
       </Sheet>
       <AddFoodSheet target={addTo} onClose={() => setAddTo(null)} />
-      <PortionSheet item={portionItem} onClose={() => setPortionFor(null)} />
+      <ItemSheet item={portionItem} onClose={() => setPortionFor(null)} />
+      <CopyDaySheet from={copyFrom} onClose={() => setCopyFrom(null)} />
     </div>
   );
 }

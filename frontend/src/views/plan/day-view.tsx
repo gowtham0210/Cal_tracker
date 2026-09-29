@@ -3,6 +3,7 @@
 import clsx from "clsx";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button, Card, ProgressBar } from "@/components/ui";
+import { Menu, type MenuItem } from "@/components/ui/menu";
 import type { MealPlan, PlanItem } from "@/lib/api";
 import { fromKey } from "@/lib/date";
 import { PLAN_MEALS } from "@/lib/plan-math";
@@ -19,12 +20,14 @@ export function DayView({
   onDay,
   onOpen,
   onAdd,
+  dayActions,
 }: {
   plan: MealPlan;
   day: string;
   onDay: (d: string) => void;
   onOpen: (i: PlanItem) => void;
   onAdd: (t: SlotTarget) => void;
+  dayActions: (date: string) => MenuItem[];
 }) {
   const index = Math.max(0, plan.days.findIndex((d) => d.date === day));
   const current = plan.days[index];
@@ -74,6 +77,7 @@ export function DayView({
               </p>
             </div>
             <div className="flex items-center gap-1">
+              <Menu label={`${longDay(current.date)} actions`} items={dayActions(current.date)} />
               <Button variant="ghost" size="icon" aria-label="Previous day" disabled={index === 0} onClick={() => onDay(plan.days[index - 1].date)}>
                 <ChevronLeft className="size-5" />
               </Button>

@@ -1,5 +1,6 @@
 "use client";
 
+import { Menu, type MenuItem } from "@/components/ui/menu";
 import type { MealPlan, PlanItem } from "@/lib/api";
 import { PLAN_MEALS } from "@/lib/plan-math";
 import { MEAL_EMOJI, MEAL_LABEL } from "@/lib/ui";
@@ -10,7 +11,17 @@ import { StatusPill } from "./status-pill";
 import type { SlotTarget } from "./add-food-sheet";
 
 /** Desktop week grid: days as columns, meals as rows. Scrolls sideways when space is tight. */
-export function WeekGrid({ plan, onOpen, onAdd }: { plan: MealPlan; onOpen: (i: PlanItem) => void; onAdd: (t: SlotTarget) => void }) {
+export function WeekGrid({
+  plan,
+  onOpen,
+  onAdd,
+  dayActions,
+}: {
+  plan: MealPlan;
+  onOpen: (i: PlanItem) => void;
+  onAdd: (t: SlotTarget) => void;
+  dayActions: (date: string) => MenuItem[];
+}) {
   return (
     <div className="overflow-x-auto rounded-2xl border border-border bg-surface shadow-card">
       <table className="w-full min-w-[980px] table-fixed border-collapse text-left">
@@ -26,9 +37,12 @@ export function WeekGrid({ plan, onOpen, onAdd }: { plan: MealPlan; onOpen: (i: 
             <td />
             {plan.days.map((d) => (
               <th key={d.date} scope="col" className="px-2 py-3 align-top font-normal">
-                <span className="block text-sm font-semibold">
-                  {shortDay(d.date)} <span className="font-normal text-muted">{fromKey(d.date).getDate()}</span>
-                </span>
+                <div className="flex items-start justify-between gap-1">
+                  <span className="block text-sm font-semibold">
+                    {shortDay(d.date)} <span className="font-normal text-muted">{fromKey(d.date).getDate()}</span>
+                  </span>
+                  <Menu label={`${fromKey(d.date).toLocaleDateString(undefined, { weekday: "long" })} actions`} items={dayActions(d.date)} className="-mr-1 -mt-1" />
+                </div>
                 <span className="mt-0.5 block text-xs tabular text-muted">{d.status.state === "empty" ? "—" : `${Math.round(d.calories).toLocaleString()} kcal`}</span>
                 {d.status.state !== "empty" && <StatusPill status={d.status} compact className="mt-1" />}
               </th>

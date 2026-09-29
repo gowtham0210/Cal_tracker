@@ -1,6 +1,6 @@
 import { Router, type Request } from "express";
 import { z } from "zod";
-import { addItem, buildPlan, removeItem, updateItem } from "../lib/plan.js";
+import { addItem, buildPlan, copyDay, copyItem, removeItem, setDay, updateItem } from "../lib/plan.js";
 import { body, date, mealType, parse, uuid } from "../http/validate.js";
 import { requireProfile } from "./profile.js";
 
@@ -45,5 +45,40 @@ plans.patch("/:weekStart/items/:itemId", (req, res) => {
 plans.delete("/:weekStart/items/:itemId", (req, res) => {
   const weekStart = weekParam(req);
   removeItem(res.locals.userId, weekStart, itemParam(req));
+  res.json(planResponse(res.locals.userId, weekStart));
+});
+
+const slotRef = body({ date, meal: mealType });
+const dayParam = (req: Request) => parse(z.object({ date }), { date: req.params.date }).date;
+const dayItemsInput = body({
+  items: z.array(z.strictObject({ meal: mealType, foodId: uuid, quantity }), "Send a list of items.").max(60, "At most 60 foods a day."),
+});
+const copyDayInput = body({
+  to: z
+    .array(date)
+    .min(1, "Choose at least one day.")
+    .max(6)
+    .refine((d) => new Set(d).size === d.length, "Each day once."),
+  mode: z.enum(["replace", "add"], "Must be replace or add."),
+});
+
+plans.post("/:weekStart/items/:itemId/copy", (req, res) => {
+  const weekStart = weekParam(req);
+  copyItem(res.locals.userId, weekStart, itemParam(req), parse(slotRef, req.body));
+  res.status(201).json(planResponse(res.locals.userId, weekStart));
+});
+
+plans.put("/:weekStart/days/:date", (req, res) => {
+  const weekStart = weekParam(req);
+  requireProfile(res.locals.userId);
+  setDay(res.locals.userId, weekStart, dayParam(req), parse(dayItemsInput, req.body).items);
+  res.json(planResponse(res.locals.userId, weekStart));
+});
+
+plans.post("/:weekStart/days/:date/copy", (req, res) => {
+  const weekStart = weekParam(req);
+  requireProfile(res.locals.userId);
+  const { to, mode } = parse(copyDayInput, req.body);
+  copyDay(res.locals.userId, weekStart, dayParam(req), to, mode);
   res.json(planResponse(res.locals.userId, weekStart));
 });

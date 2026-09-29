@@ -1,40 +1,91 @@
 "use client";
 
 import clsx from "clsx";
-import { Minus, Plus, Trash2 } from "lucide-react";
+import { ArrowRightLeft, Copy, Minus, MoveRight, Plus, Trash2 } from "lucide-react";
+import { useState } from "react";
 import { Button, Sheet } from "@/components/ui";
 import type { PlanItem } from "@/lib/api";
 import { formatQuantity, itemNutrition } from "@/lib/plan-math";
 import { usePlan } from "@/lib/plan-store";
 import { useStore } from "@/lib/store";
+import type { MealType } from "@/lib/types";
 import { MEAL_LABEL } from "@/lib/ui";
-import { longDay } from "@/lib/week";
+import { longDay, shortDay } from "@/lib/week";
+import { SlotPicker } from "./slot-picker";
+import { useUndoable } from "./use-undoable";
 
 const SHORTCUTS = [0.5, 1, 1.5, 2];
 const clamp = (q: number) => Math.min(10, Math.max(0.25, Math.round(q * 4) / 4));
 
-/** Adjust a planned food's portion; the numbers recalculate as you tap and save immediately. */
-export function PortionSheet({ item, onClose }: { item: PlanItem | null; onClose: () => void }) {
-  const updateItem = usePlan((s) => s.updateItem);
-  const removeItem = usePlan((s) => s.removeItem);
+type Step = { kind: "main" } | { kind: "move" | "copy"; date: string; meal: MealType };
+
+/** Everything you can do with a planned food: portion, move, copy, swap and remove. */
+export function ItemSheet({ item, onClose, onSwap }: { item: PlanItem | null; onClose: () => void; onSwap?: (item: PlanItem) => void }) {
+  const weekStart = usePlan((s) => s.weekStart);
+  const { updateItem, removeItem, copyItem } = usePlan();
   const trackMacros = useStore((s) => s.profile?.trackMacros ?? true);
-  if (!item) return <Sheet open={false} onClose={onClose} title="">{null}</Sheet>;
+  const undoable = useUndoable();
+  const [step, setStep] = useState<Step>({ kind: "main" });
+
+  const close = () => {
+    setStep({ kind: "main" });
+    onClose();
+  };
+  if (!item || !weekStart) return <Sheet open={false} onClose={close} title="">{null}</Sheet>;
 
   const n = itemNutrition(item.food, item.quantity);
   const set = (q: number) => clamp(q) !== item.quantity && updateItem(item.id, { quantity: clamp(q) });
+  const where = (d: string, m: MealType) => `${shortDay(d)} ${MEAL_LABEL[m].toLowerCase()}`;
+
+  if (step.kind !== "main") {
+    const unchanged = step.date === item.date && step.meal === item.meal;
+    const confirm = () => {
+      const to = { date: step.date, meal: step.meal };
+      if (step.kind === "move") undoable([item.date, to.date], () => updateItem(item.id, to), `Moved ${item.food.name} to ${where(to.date, to.meal)}`);
+      else undoable([to.date], () => copyItem(item.id, to), `Copied ${item.food.name} to ${where(to.date, to.meal)}`);
+      close();
+    };
+    return (
+      <Sheet
+        open
+        onClose={close}
+        title={step.kind === "move" ? "Move to…" : "Copy to…"}
+        description={item.food.name}
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setStep({ kind: "main" })}>
+              Back
+            </Button>
+            <Button onClick={confirm} disabled={step.kind === "move" && unchanged}>
+              {step.kind === "move" ? "Move" : "Copy"} to {where(step.date, step.meal)}
+            </Button>
+          </div>
+        }
+      >
+        <SlotPicker weekStart={weekStart} date={step.date} meal={step.meal} onChange={(v) => setStep({ ...step, ...v })} />
+      </Sheet>
+    );
+  }
 
   return (
     <Sheet
       open
-      onClose={onClose}
+      onClose={close}
       title={item.food.name}
       description={`${MEAL_LABEL[item.meal]} · ${longDay(item.date)}`}
       footer={
         <div className="flex justify-between gap-2">
-          <Button variant="ghost" className="text-danger" onClick={() => (removeItem(item.id), onClose())}>
+          <Button
+            variant="ghost"
+            className="text-danger"
+            onClick={() => {
+              undoable([item.date], () => removeItem(item.id), `Removed ${item.food.name}`);
+              close();
+            }}
+          >
             <Trash2 className="size-4" /> Remove
           </Button>
-          <Button onClick={onClose}>Done</Button>
+          <Button onClick={close}>Done</Button>
         </div>
       }
     >
@@ -86,6 +137,20 @@ export function PortionSheet({ item, onClose }: { item: PlanItem | null; onClose
               </div>
             ))}
         </dl>
+
+        <div className={clsx("grid gap-2", onSwap ? "grid-cols-3" : "grid-cols-2")}>
+          <Button variant="outline" onClick={() => setStep({ kind: "move", date: item.date, meal: item.meal })}>
+            <MoveRight className="size-4" /> Move to…
+          </Button>
+          <Button variant="outline" onClick={() => setStep({ kind: "copy", date: item.date, meal: item.meal })}>
+            <Copy className="size-4" /> Copy to…
+          </Button>
+          {onSwap && (
+            <Button variant="outline" onClick={() => (close(), onSwap(item))}>
+              <ArrowRightLeft className="size-4" /> Swap
+            </Button>
+          )}
+        </div>
       </div>
     </Sheet>
   );

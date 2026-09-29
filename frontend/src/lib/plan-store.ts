@@ -26,7 +26,18 @@ interface PlanState {
   addItem: (date: string, meal: MealType, food: LibraryFood, quantity?: number) => string;
   updateItem: (id: string, patch: PlanItemPatch, food?: LibraryFood) => void;
   removeItem: (id: string) => void;
+  copyItem: (id: string, to: { date: string; meal: MealType }) => void;
+  setDay: (date: string, items: PlanItem[]) => void;
+  copyDay: (from: string, to: string[], mode: "replace" | "add") => void;
+
+  /** The foods planned on some days, to undo a change later with restoreDays. */
+  snapshotDays: (dates: string[]) => DaySnapshot;
+  restoreDays: (snapshot: DaySnapshot) => void;
 }
+
+export type DaySnapshot = Record<string, PlanItem[]>;
+
+const tmp = () => `tmp-${Math.random().toString(36).slice(2, 10)}`;
 
 // New items get a temporary id until the server answers; later changes wait for the real one.
 const realIds = new Map<string, Promise<string>>();
@@ -76,7 +87,7 @@ export const usePlan = create<PlanState>()((set, get) => {
     },
 
     addItem: (date, meal, food, quantity = 1) => {
-      const id = `tmp-${Math.random().toString(36).slice(2, 10)}`;
+      const id = tmp();
       const before = new Set(get().plan?.items.map((i) => i.id));
       const saved = mutate(
         (items) => [...items, { id, date, meal, quantity, position: 9999, food, calories: 0, protein: 0, carbs: 0, fat: 0 }],
@@ -107,6 +118,39 @@ export const usePlan = create<PlanState>()((set, get) => {
         (items) => items.filter((i) => i.id !== id),
         async (week) => api.removePlanItem(week, await resolveId(id)),
       ).catch(() => {});
+    },
+
+    copyItem: (id, to) => {
+      void mutate(
+        (items) => {
+          const src = items.find((i) => i.id === id);
+          return src ? [...items, { ...src, id: tmp(), ...to, position: 9999 }] : items;
+        },
+        async (week) => api.copyPlanItem(week, await resolveId(id), to),
+      ).catch(() => {});
+    },
+
+    setDay: (date, dayItems) => {
+      void mutate(
+        (items) => [...items.filter((i) => i.date !== date), ...dayItems.map((i, n) => ({ ...i, id: tmp(), date, position: n }))],
+        (week) => api.setPlanDay(week, date, dayItems.map((i) => ({ meal: i.meal, foodId: i.food.id, quantity: i.quantity }))),
+      ).catch(() => {});
+    },
+
+    copyDay: (from, to, mode) => {
+      void mutate(
+        (items) => {
+          const source = items.filter((i) => i.date === from);
+          const kept = mode === "replace" ? items.filter((i) => !to.includes(i.date)) : items;
+          return [...kept, ...to.flatMap((date) => source.map((i) => ({ ...i, id: tmp(), date, position: 9999 + i.position })))];
+        },
+        (week) => api.copyPlanDay(week, from, to, mode),
+      ).catch(() => {});
+    },
+
+    snapshotDays: (dates) => Object.fromEntries(dates.map((d) => [d, (get().plan?.items ?? []).filter((i) => i.date === d)])),
+    restoreDays: (snapshot) => {
+      for (const [date, dayItems] of Object.entries(snapshot)) get().setDay(date, dayItems);
     },
   };
 });

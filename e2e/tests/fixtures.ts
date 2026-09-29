@@ -79,3 +79,28 @@ export function mondayOf(d = new Date()) {
 
 export const test = base;
 export { expect };
+
+/** Arranges a day of the current week through the API: [meal, food name pattern, quantity][]. */
+export async function planDay(request: APIRequestContext, u: TestUser, date: string, items: [string, RegExp, number][]) {
+  const a = authed(request, u.token);
+  const foods: { id: string; name: string }[] = (await (await a.get("/food-library?tab=all")).json()).data;
+  const body = {
+    items: items.map(([meal, re, quantity]) => {
+      const f = foods.find((x) => re.test(x.name));
+      if (!f) throw new Error(`no food ${re}`);
+      return { meal, foodId: f.id, quantity };
+    }),
+  };
+  const res = await a.put(`/meal-plans/${mondayOf(new Date(`${date}T12:00:00`))}/days/${date}`, body);
+  expect(res.status()).toBe(200);
+}
+
+/** The dates (YYYY-MM-DD) of the current week, Monday first. */
+export function thisWeek() {
+  const m = new Date(`${mondayOf()}T12:00:00`);
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(m);
+    d.setDate(m.getDate() + i);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  });
+}

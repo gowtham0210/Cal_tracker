@@ -179,3 +179,45 @@ export const removeItem = db.transaction((userId: string, weekStart: string, ite
   db.prepare("DELETE FROM plan_items WHERE id = ?").run(item.id);
   renumber(plan.id, item.date, item.meal);
 });
+
+/* ---------------- Day operations ---------------- */
+
+export interface DayItem {
+  meal: Meal;
+  foodId: string;
+  quantity: number;
+}
+
+const dayItems = db.prepare<[string, string], ItemRow>(
+  `SELECT * FROM plan_items WHERE plan_id = ? AND date = ?
+   ORDER BY CASE meal WHEN 'breakfast' THEN 0 WHEN 'lunch' THEN 1 WHEN 'snack' THEN 2 ELSE 3 END, position`,
+);
+
+/** Replaces a day's foods, keeping the given order within each meal. */
+export const setDay = db.transaction((userId: string, weekStart: string, date: string, items: DayItem[], source?: PlanRow["source"]) => {
+  checkInWeek(weekStart, date, "date");
+  items.forEach((i, n) => checkFood(userId, i.foodId, `/items/${n}/foodId`));
+  const plan = ensurePlan(userId, weekStart, source);
+  db.prepare("DELETE FROM plan_items WHERE plan_id = ? AND date = ?").run(plan.id, date);
+  for (const i of items) insertItem(plan.id, { date, ...i });
+});
+
+export const copyDay = db.transaction((userId: string, weekStart: string, from: string, to: string[], mode: "replace" | "add") => {
+  checkInWeek(weekStart, from, "date");
+  to.forEach((d, n) => {
+    checkInWeek(weekStart, d, `/to/${n}`);
+    if (d === from) throw fieldError(`/to/${n}`, "Can't copy a day onto itself.");
+  });
+  const plan = ensurePlan(userId, weekStart);
+  const source = dayItems.all(plan.id, from);
+  for (const date of to) {
+    if (mode === "replace") db.prepare("DELETE FROM plan_items WHERE plan_id = ? AND date = ?").run(plan.id, date);
+    for (const i of source) insertItem(plan.id, { date, meal: i.meal, foodId: i.food_id, quantity: i.quantity });
+  }
+});
+
+export const copyItem = db.transaction((userId: string, weekStart: string, itemId: string, to: { date: string; meal: Meal }) => {
+  const { plan, item } = findItem(userId, weekStart, itemId);
+  checkInWeek(weekStart, to.date);
+  insertItem(plan.id, { date: to.date, meal: to.meal, foodId: item.food_id, quantity: item.quantity });
+});

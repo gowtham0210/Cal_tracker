@@ -382,6 +382,11 @@ export const api = {
     json<MealPlan>("POST", `/meal-plans/${weekStart}/items`, { body: item }),
   updatePlanItem: (weekStart: string, id: string, patch: PlanItemPatch) => json<MealPlan>("PATCH", `/meal-plans/${weekStart}/items/${enc(id)}`, { body: patch }),
   removePlanItem: (weekStart: string, id: string) => json<MealPlan>("DELETE", `/meal-plans/${weekStart}/items/${enc(id)}`),
+  copyPlanItem: (weekStart: string, id: string, to: { date: string; meal: MealType }) => json<MealPlan>("POST", `/meal-plans/${weekStart}/items/${enc(id)}/copy`, { body: to }),
+  setPlanDay: (weekStart: string, date: string, items: { meal: MealType; foodId: string; quantity: number }[]) =>
+    json<MealPlan>("PUT", `/meal-plans/${weekStart}/days/${date}`, { body: { items } }),
+  copyPlanDay: (weekStart: string, date: string, to: string[], mode: "replace" | "add") =>
+    json<MealPlan>("POST", `/meal-plans/${weekStart}/days/${date}/copy`, { body: { to, mode } }),
 
   /** Downloads an export as a file. */
   async exportCsv(kind: string): Promise<{ filename: string; blob: Blob }> {
