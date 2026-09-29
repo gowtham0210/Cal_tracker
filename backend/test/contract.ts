@@ -1,11 +1,14 @@
-import Ajv2020 from "ajv/dist/2020.js";
-import addFormats from "ajv-formats";
-import { readFileSync } from "node:fs";
+import Ajv2020Module from "ajv/dist/2020.js";
+import addFormatsModule from "ajv-formats";
+import { appendFileSync, readFileSync } from "node:fs";
 import { parse } from "yaml";
 
 // Checks responses against api/openapi.yaml: the status must be documented for the
 // operation, and the body must match the documented schema for its media type.
 const spec = parse(readFileSync(new URL("../../api/openapi.yaml", import.meta.url), "utf8"));
+// Both are CommonJS modules; `.default` is the export under NodeNext.
+const Ajv2020 = Ajv2020Module.default;
+const addFormats = addFormatsModule.default;
 const ajv = new Ajv2020({ strict: false, allErrors: true });
 addFormats(ajv);
 ajv.addFormat("password", true);
@@ -32,6 +35,7 @@ export function assertMatchesSpec(method: string, path: string, status: number, 
   const m = method.toLowerCase();
   const op = spec.paths[template][m];
   if (!op) throw new Error(`${method} ${template} is not in the spec`);
+  if (process.env.CONTRACT_COVERAGE) appendFileSync(process.env.CONTRACT_COVERAGE, `${method.toUpperCase()} ${template} ${status}\n`);
   let response = op.responses[String(status)];
   if (!response) throw new Error(`${method} ${template} returned ${status}, which the spec does not document (${Object.keys(op.responses)})`);
   let pointer = `/paths/${escape(template)}/${m}/responses/${status}`;

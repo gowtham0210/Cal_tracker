@@ -1065,7 +1065,9 @@ paths:
       tags: [Coach]
       operationId: getWeeklySummary
       summary: This week's coaching summary
-      description: Compares the 7 days ending on `asOf` with the 7 days before.
+      description: |
+        Compares the 7 days ending on `asOf` with the 7 days before. The numbers are computed by the
+        server; the AI writes the headline and tip. If the AI is unavailable, a rule-based headline and tip are used.
       parameters:
         - $ref: "#/components/parameters/asOf"
       responses:
@@ -1081,15 +1083,15 @@ paths:
           $ref: "#/components/responses/TooManyRequests"
         "404":
           $ref: "#/components/responses/ProfileRequired"
-        "503":
-          $ref: "#/components/responses/AiUnavailable"
 
   /coach/meal-suggestions:
     get:
       tags: [Coach]
       operationId: listMealSuggestions
       summary: Meal ideas that fit what is left today
-      description: Uses the calories and protein remaining on `asOf`, preferring protein-dense ideas when protein is behind.
+      description: |
+        Uses the calories and protein remaining on `asOf`, preferring protein-dense ideas when protein is behind.
+        Ideas over the remaining budget are dropped. If the AI is unavailable, curated ideas are used.
       parameters:
         - $ref: "#/components/parameters/asOf"
         - name: meal
@@ -1123,8 +1125,6 @@ paths:
           $ref: "#/components/responses/TooManyRequests"
         "404":
           $ref: "#/components/responses/ProfileRequired"
-        "503":
-          $ref: "#/components/responses/AiUnavailable"
 
   # ---------------------------------------------------------------- Export
   /exports/{kind}:
@@ -1169,6 +1169,8 @@ paths:
                     date,weight
                     2026-09-28,82.6
                     2026-09-29,82.4
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
         "401":
           $ref: "#/components/responses/Unauthorized"
 

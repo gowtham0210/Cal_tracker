@@ -7,14 +7,16 @@
     "dev": "tsx watch --env-file-if-exists=.env src/index.ts",
     "build": "tsc && cp -R src/db/migrations dist/db/",
     "start": "node --env-file-if-exists=.env dist/index.js",
-    "typecheck": "tsc --noEmit",
-    "test": "tsx --test test/*.test.ts"
+    "typecheck": "tsc -p tsconfig.check.json",
+    "test": "tsx --test test/*.test.ts",
+    "eval": "tsx --env-file-if-exists=.env evals/run.ts"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",
     "cors": "^2.8.6",
     "express": "^5.2.1",
     "jose": "^6.2.12",
+    "openai": "^7.24.0",
     "zod": "^4.6.5"
   },
   "devDependencies": {

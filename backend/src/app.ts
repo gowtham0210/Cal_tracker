@@ -6,8 +6,12 @@ import { errorHandler, notFound } from "./http/problem.js";
 import { requireAuth } from "./middleware/auth.js";
 import { auth } from "./routes/auth.js";
 import { journalEntries, measurementEntries, waterEntries, weightEntries } from "./routes/body.js";
+import { coach } from "./routes/coach.js";
 import { exerciseEntries } from "./routes/exercise.js";
+import { exports } from "./routes/exports.js";
 import { favoriteFoods, foodEntries } from "./routes/food.js";
+import { foodEstimates } from "./routes/food-estimates.js";
+import { insights } from "./routes/insights.js";
 import { me } from "./routes/me.js";
 import { profile } from "./routes/profile.js";
 
@@ -36,6 +40,10 @@ export function createApp() {
   v1.use("/exercise-entries", exerciseEntries);
   v1.use("/water-entries", waterEntries);
   v1.use("/journal-entries", journalEntries);
+  v1.use("/food-estimates", foodEstimates);
+  v1.use("/insights", insights);
+  v1.use("/coach", coach);
+  v1.use("/exports", exports);
   app.use("/api/v1", v1);
 
   app.use(notFound);
