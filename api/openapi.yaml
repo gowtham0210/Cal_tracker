@@ -1190,6 +1190,91 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  # ---------------------------------------------------------------- Meal plans
+  /meal-plans/{weekStart}:
+    parameters:
+      - $ref: "#/components/parameters/weekStart"
+    get:
+      tags: [Planner]
+      operationId: getMealPlan
+      summary: Get the plan for a week
+      description: A week with nothing planned returns an empty plan, not 404.
+      responses:
+        "200":
+          $ref: "#/components/responses/MealPlan"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/ProfileRequired"
+
+  /meal-plans/{weekStart}/items:
+    parameters:
+      - $ref: "#/components/parameters/weekStart"
+    post:
+      tags: [Planner]
+      operationId: addPlanItem
+      summary: Add a food to a meal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlanItemInput"
+            examples:
+              breakfast:
+                dataValue:
+                  date: "2026-10-05"
+                  meal: breakfast
+                  foodId: 0390357f-60db-4363-aae2-7b7fafd0d1e8
+                  quantity: 1.5
+      responses:
+        "201":
+          $ref: "#/components/responses/MealPlan"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/ProfileRequired"
+
+  /meal-plans/{weekStart}/items/{itemId}:
+    parameters:
+      - $ref: "#/components/parameters/weekStart"
+      - $ref: "#/components/parameters/itemId"
+    patch:
+      tags: [Planner]
+      operationId: updatePlanItem
+      summary: Change a planned food
+      description: Change the portion, move it to another day or meal of the same week, reorder it, or replace the food.
+      requestBody:
+        required: true
+        content:
+          application/merge-patch+json:
+            schema:
+              $ref: "#/components/schemas/PlanItemPatch"
+      responses:
+        "200":
+          $ref: "#/components/responses/MealPlan"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Planner]
+      operationId: removePlanItem
+      summary: Remove a planned food
+      responses:
+        "200":
+          $ref: "#/components/responses/MealPlan"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   # ---------------------------------------------------------------- Export
   /exports/{kind}:
     get:
@@ -1318,6 +1403,19 @@ components:
       required: true
       schema:
         $ref: "#/components/schemas/Id"
+    weekStart:
+      name: weekStart
+      in: path
+      required: true
+      description: The Monday that starts the week.
+      schema:
+        $ref: "#/components/schemas/Date"
+    itemId:
+      name: itemId
+      in: path
+      required: true
+      schema:
+        $ref: "#/components/schemas/Id"
     exerciseEntryId:
       name: exerciseEntryId
       in: path
@@ -1396,6 +1494,12 @@ components:
         application/problem+json:
           schema:
             $ref: "#/components/schemas/Problem"
+    MealPlan:
+      description: The week's plan, with totals and goal status computed from the food library.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/MealPlan"
     TooManyRequests:
       description: Too many requests. Wait for `Retry-After` seconds.
       headers:
@@ -2265,6 +2369,157 @@ components:
           minimum: 0
           readOnly: true
           description: How many times the user has logged this food.
+
+    Quantity:
+      type: number
+      minimum: 0.25
+      maximum: 10
+      multipleOf: 0.25
+      description: Number of servings, in quarter steps.
+    Nutrition:
+      type: object
+      required: [calories, protein, carbs, fat]
+      properties:
+        calories:
+          type: number
+        protein:
+          type: number
+        carbs:
+          type: number
+        fat:
+          type: number
+    GoalStatus:
+      type: object
+      required: [state, difference]
+      description: |
+        `on-target` means within ±5% of the calorie goal or ±100 kcal, whichever is larger.
+        `difference` is planned calories minus the goal. `empty` means nothing is planned that day.
+      properties:
+        state:
+          type: string
+          enum: [on-target, under, over, empty]
+        difference:
+          type: number
+    PlanItemInput:
+      type: object
+      additionalProperties: false
+      required: [date, meal, foodId]
+      properties:
+        date:
+          $ref: "#/components/schemas/Date"
+        meal:
+          $ref: "#/components/schemas/MealType"
+        foodId:
+          type: string
+          format: uuid
+        quantity:
+          $ref: "#/components/schemas/Quantity"
+          default: 1
+    PlanItemPatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        date:
+          $ref: "#/components/schemas/Date"
+        meal:
+          $ref: "#/components/schemas/MealType"
+        foodId:
+          type: string
+          format: uuid
+        quantity:
+          $ref: "#/components/schemas/Quantity"
+        position:
+          type: integer
+          minimum: 0
+          description: Place within the meal, starting at 0.
+    PlanItem:
+      allOf:
+        - $ref: "#/components/schemas/Nutrition"
+      type: object
+      required: [id, date, meal, quantity, position, food]
+      properties:
+        id:
+          $ref: "#/components/schemas/Id"
+        date:
+          $ref: "#/components/schemas/Date"
+        meal:
+          $ref: "#/components/schemas/MealType"
+        quantity:
+          $ref: "#/components/schemas/Quantity"
+        position:
+          type: integer
+          minimum: 0
+        food:
+          $ref: "#/components/schemas/LibraryFood"
+    PlanDay:
+      allOf:
+        - $ref: "#/components/schemas/Nutrition"
+      type: object
+      required: [date, status, meals]
+      properties:
+        date:
+          $ref: "#/components/schemas/Date"
+        status:
+          $ref: "#/components/schemas/GoalStatus"
+        meals:
+          type: object
+          required: [breakfast, lunch, snack, dinner]
+          properties:
+            breakfast:
+              $ref: "#/components/schemas/Nutrition"
+            lunch:
+              $ref: "#/components/schemas/Nutrition"
+            snack:
+              $ref: "#/components/schemas/Nutrition"
+            dinner:
+              $ref: "#/components/schemas/Nutrition"
+    MealPlan:
+      type: object
+      required: [weekStart, status, source, calorieGoal, toleranceKcal, items, days, week]
+      properties:
+        weekStart:
+          $ref: "#/components/schemas/Date"
+        status:
+          type: string
+          enum: [active, draft]
+          description: A draft was generated and has not been kept or discarded yet.
+        source:
+          type: [string, "null"]
+          enum: [manual, ai, rules, template, null]
+          description: How the plan was last filled. `rules` means it was built without the AI.
+        calorieGoal:
+          type: integer
+        toleranceKcal:
+          type: number
+          description: How far from the goal still counts as on target.
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlanItem"
+        days:
+          type: array
+          minItems: 7
+          maxItems: 7
+          items:
+            $ref: "#/components/schemas/PlanDay"
+        week:
+          allOf:
+            - $ref: "#/components/schemas/Nutrition"
+          type: object
+          required: [plannedDays, daysOnTarget, averageCalories]
+          properties:
+            plannedDays:
+              type: integer
+              minimum: 0
+              maximum: 7
+            daysOnTarget:
+              type: integer
+              minimum: 0
+              maximum: 7
+            averageCalories:
+              type: number
+              description: Average over days with something planned.
 
     # ---------- Errors
     Problem:

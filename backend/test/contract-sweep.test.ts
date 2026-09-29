@@ -12,6 +12,8 @@ const sample: Record<string, string> = {
   exerciseEntryId: "0390357f-60db-4363-aae2-7b7fafd0d1e8",
   date: "2026-09-29",
   kind: "food",
+  weekStart: "2026-10-05",
+  itemId: "0390357f-60db-4363-aae2-7b7fafd0d1e8",
 };
 const operations = Object.entries(spec.paths).flatMap(([path, item]: [string, any]) =>
   Object.entries(item)

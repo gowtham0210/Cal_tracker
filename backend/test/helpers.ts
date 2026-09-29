@@ -71,3 +71,15 @@ export async function onboardedUser() {
   await api("PUT", "/me/profile", { token: u.token, body: PROFILE });
   return u;
 }
+
+/** A library food id by name (the library is synced on read). */
+export async function foodId(token: string, name: RegExp) {
+  const foods: { id: string; name: string }[] = (await api("GET", "/food-library?tab=all", { token })).body.data;
+  const f = foods.find((x) => name.test(x.name));
+  if (!f) throw new Error(`no library food matching ${name}`);
+  return f.id;
+}
+
+/** Monday 5 Oct 2026 and its days, used as a fixed test week. */
+export const WEEK = "2026-10-05";
+export const DAY = (i: number) => `2026-10-${String(5 + i).padStart(2, "0")}`;

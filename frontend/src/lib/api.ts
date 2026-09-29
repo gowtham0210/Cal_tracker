@@ -141,6 +141,52 @@ export interface LibraryFood {
 
 export type LibraryTab = "usual" | "favorites" | "new" | "all";
 
+export interface Nutrition {
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+}
+
+export interface GoalStatus {
+  state: "on-target" | "under" | "over" | "empty";
+  difference: number;
+}
+
+export interface PlanItem extends Nutrition {
+  id: string;
+  date: string;
+  meal: MealType;
+  quantity: number;
+  position: number;
+  food: LibraryFood;
+}
+
+export interface PlanDay extends Nutrition {
+  date: string;
+  status: GoalStatus;
+  meals: Record<MealType, Nutrition>;
+}
+
+export interface MealPlan {
+  weekStart: string;
+  status: "active" | "draft";
+  source: "manual" | "ai" | "rules" | "template" | null;
+  calorieGoal: number;
+  toleranceKcal: number;
+  items: PlanItem[];
+  days: PlanDay[];
+  week: Nutrition & { plannedDays: number; daysOnTarget: number; averageCalories: number };
+}
+
+export interface PlanItemPatch {
+  date?: string;
+  meal?: MealType;
+  foodId?: string;
+  quantity?: number;
+  position?: number;
+}
+
 /** An RFC 9457 problem returned by the API. */
 export interface Problem {
   type?: string;
@@ -330,6 +376,12 @@ export const api = {
     const qs = new URLSearchParams(Object.entries(opts).filter(([, v]) => v) as [string, string][]).toString();
     return json<{ data: LibraryFood[] }>("GET", `/food-library${qs ? `?${qs}` : ""}`).then((r) => r.data);
   },
+
+  plan: (weekStart: string) => json<MealPlan>("GET", `/meal-plans/${weekStart}`),
+  addPlanItem: (weekStart: string, item: { date: string; meal: MealType; foodId: string; quantity: number }) =>
+    json<MealPlan>("POST", `/meal-plans/${weekStart}/items`, { body: item }),
+  updatePlanItem: (weekStart: string, id: string, patch: PlanItemPatch) => json<MealPlan>("PATCH", `/meal-plans/${weekStart}/items/${enc(id)}`, { body: patch }),
+  removePlanItem: (weekStart: string, id: string) => json<MealPlan>("DELETE", `/meal-plans/${weekStart}/items/${enc(id)}`),
 
   /** Downloads an export as a file. */
   async exportCsv(kind: string): Promise<{ filename: string; blob: Blob }> {

@@ -14,6 +14,7 @@ import { foodEstimates } from "./routes/food-estimates.js";
 import { insights } from "./routes/insights.js";
 import { library } from "./routes/library.js";
 import { me } from "./routes/me.js";
+import { plans } from "./routes/plans.js";
 import { profile } from "./routes/profile.js";
 
 export function createApp() {
@@ -44,6 +45,7 @@ export function createApp() {
   v1.use("/food-estimates", foodEstimates);
   v1.use("/insights", insights);
   v1.use("/food-library", library);
+  v1.use("/meal-plans", plans);
   v1.use("/coach", coach);
   v1.use("/exports", exports);
   app.use("/api/v1", v1);

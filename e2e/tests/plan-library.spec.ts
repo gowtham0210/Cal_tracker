@@ -9,6 +9,8 @@ test("Plan is in the sidebar and shows the food library with the user's foods fi
   await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Plan" }).click();
   await expect(page).toHaveURL(/\/plan$/);
   await expect(page.getByRole("heading", { level: 1, name: "Plan" })).toBeVisible();
+  // At 1366px the library is a panel you open; it opens by default on wider screens.
+  await page.getByRole("button", { name: "Food library" }).click();
 
   const library = page.getByRole("complementary", { name: "Food library" });
   await expect(library.getByRole("region", { name: "Your foods" }).getByText("Masala dosa")).toBeVisible();

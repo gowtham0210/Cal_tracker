@@ -71,6 +71,11 @@ export function onSyncError(fn: ErrorListener) {
   return () => void errorListeners.delete(fn);
 }
 
+/** Shows a save failure from elsewhere in the app (e.g. the planner). */
+export function reportSyncError(message: string) {
+  errorListeners.forEach((fn) => fn(message));
+}
+
 function reportError(err: unknown, fallback: string) {
   if (err instanceof ApiError && err.status === 401) return; // The session handler signs out.
   const message = err instanceof ApiError && err.status !== 0 && err.status < 500 ? err.problem.detail ?? err.problem.title : err instanceof ApiError ? err.problem.title : fallback;
