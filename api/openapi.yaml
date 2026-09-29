@@ -126,6 +126,8 @@ paths:
           $ref: "#/components/responses/ValidationFailed"
         "409":
           $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
 
   /auth/login:
     post:
@@ -154,6 +156,8 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
 
   # ---------------------------------------------------------------- Account
   /me:
@@ -211,7 +215,8 @@ paths:
       summary: Delete all logs
       description: |
         Deletes every food, favorite, weigh-in, measurement, workout, water,
-        journal and coach entry. The account and profile are kept.
+        journal and coach entry. The account and profile are kept, including the
+        weigh-in on the profile's `startDate`, which holds the start weight.
         Backs the "Clear all data" action in Settings.
       responses:
         "204":
@@ -492,6 +497,8 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "429":
           $ref: "#/components/responses/TooManyRequests"
+        "503":
+          $ref: "#/components/responses/AiUnavailable"
 
   # ---------------------------------------------------------------- Favorites
   /favorite-foods:
@@ -933,7 +940,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
-          $ref: "#/components/responses/NotFound"
+          $ref: "#/components/responses/ProfileRequired"
 
   /insights/daily:
     get:
@@ -982,6 +989,8 @@ paths:
                       $ref: "#/components/schemas/Badge"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/ProfileRequired"
 
   # ---------------------------------------------------------------- Coach
   /coach/messages:
@@ -1037,6 +1046,10 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "429":
           $ref: "#/components/responses/TooManyRequests"
+        "404":
+          $ref: "#/components/responses/ProfileRequired"
+        "503":
+          $ref: "#/components/responses/AiUnavailable"
     delete:
       tags: [Coach]
       operationId: clearCoachMessages
@@ -1066,6 +1079,10 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "429":
           $ref: "#/components/responses/TooManyRequests"
+        "404":
+          $ref: "#/components/responses/ProfileRequired"
+        "503":
+          $ref: "#/components/responses/AiUnavailable"
 
   /coach/meal-suggestions:
     get:
@@ -1104,6 +1121,10 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "429":
           $ref: "#/components/responses/TooManyRequests"
+        "404":
+          $ref: "#/components/responses/ProfileRequired"
+        "503":
+          $ref: "#/components/responses/AiUnavailable"
 
   # ---------------------------------------------------------------- Export
   /exports/{kind}:
@@ -1294,8 +1315,23 @@ components:
         application/problem+json:
           schema:
             $ref: "#/components/schemas/Problem"
+    ProfileRequired:
+      description: The user has not set up a profile yet. Create one with `PUT /me/profile`.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    AiUnavailable:
+      description: The AI service is not configured or did not answer in time. Try again later.
+      headers:
+        Retry-After:
+          $ref: "#/components/headers/RetryAfter"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
     TooManyRequests:
-      description: Too many AI requests. Wait for `Retry-After` seconds.
+      description: Too many requests. Wait for `Retry-After` seconds.
       headers:
         Retry-After:
           $ref: "#/components/headers/RetryAfter"

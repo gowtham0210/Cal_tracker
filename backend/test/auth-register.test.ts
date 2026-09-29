@@ -1,31 +1,13 @@
 import assert from "node:assert/strict";
-import type { AddressInfo } from "node:net";
-import { after, before, describe, test } from "node:test";
+import { describe, test } from "node:test";
 
-process.env.DB_PATH = ":memory:";
-process.env.JWT_SECRET = "test-secret-that-is-at-least-32-characters-long";
-process.env.ACCESS_TOKEN_TTL = "3600";
-
-const { createApp } = await import("../src/app.js");
-const { db } = await import("../src/db/index.js");
+const { api, db } = await import("./helpers.js");
 const { verifyAccessToken } = await import("../src/auth/tokens.js");
 const { verifyPassword } = await import("../src/auth/password.js");
-const { assertMatchesSpec } = await import("./contract.js");
-
-let baseUrl = "";
-const server = createApp().listen(0);
-before(() => {
-  baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/v1`;
-});
-after(() => server.close());
 
 async function register(body: unknown, raw = false) {
-  const res = await fetch(`${baseUrl}/auth/register`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: raw ? (body as string) : JSON.stringify(body),
-  });
-  return { res, body: await res.json() };
+  const r = await api("POST", "/auth/register", raw ? { raw: body as string } : { body });
+  return { res: { status: r.status, headers: r.headers }, body: r.body };
 }
 
 const valid = { email: "  Gowtham@Example.COM ", name: "  Gowtham ", password: "correct horse battery" };
@@ -37,7 +19,6 @@ describe("POST /auth/register", () => {
     assert.equal(res.status, 201);
     assert.match(res.headers.get("content-type")!, /^application\/json/);
     assert.equal(res.headers.get("cache-control"), "no-store");
-    assertMatchesSpec("POST", "/auth/register", 201, body);
 
     assert.equal(body.tokenType, "Bearer");
     assert.equal(body.expiresIn, 3600);
@@ -65,7 +46,6 @@ describe("POST /auth/register", () => {
 
     assert.equal(res.status, 409);
     assert.match(res.headers.get("content-type")!, /^application\/problem\+json/);
-    assertMatchesSpec("POST", "/auth/register", 409, body);
     assert.equal(body.type, "https://lighter.app/problems/email-taken");
     assert.deepEqual(body.errors, [{ pointer: "/email", detail: "An account with this email already exists." }]);
     assert.deepEqual(db.prepare("SELECT count(*) AS n FROM users").get(), before, "no user was created");
@@ -75,7 +55,6 @@ describe("POST /auth/register", () => {
     const { res, body } = await register({});
 
     assert.equal(res.status, 400);
-    assertMatchesSpec("POST", "/auth/register", 400, body);
     assert.equal(body.type, "https://lighter.app/problems/validation-failed");
     assert.deepEqual(body.errors.map((e: { pointer: string }) => e.pointer).sort(), ["/email", "/name", "/password"]);
   });
@@ -94,8 +73,7 @@ describe("POST /auth/register", () => {
     test(`rejects ${label}`, async () => {
       const { res, body } = await register(input);
       assert.equal(res.status, 400);
-      assertMatchesSpec("POST", "/auth/register", 400, body);
-      assert.deepEqual(
+        assert.deepEqual(
         body.errors.map((e: { pointer: string }) => e.pointer),
         [pointer],
       );
@@ -105,14 +83,12 @@ describe("POST /auth/register", () => {
   test("rejects a body that is not a JSON object", async () => {
     const { res, body } = await register([valid]);
     assert.equal(res.status, 400);
-    assertMatchesSpec("POST", "/auth/register", 400, body);
   });
 
   test("rejects malformed JSON", async () => {
     const { res, body } = await register("{ not json", true);
     assert.equal(res.status, 400);
     assert.match(res.headers.get("content-type")!, /^application\/problem\+json/);
-    assertMatchesSpec("POST", "/auth/register", 400, body);
     assert.equal(body.type, "https://lighter.app/problems/malformed-json");
   });
 });
