@@ -122,6 +122,25 @@ export interface WeeklySummary {
   tip: string;
 }
 
+export interface LibraryFood {
+  id: string;
+  name: string;
+  meal: MealType;
+  serving: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  source: "logged" | "favorite" | "curated" | "ai";
+  confidence: "high" | "medium" | "low" | null;
+  cuisine: string | null;
+  diet: "veg" | "eggetarian" | "non-veg" | null;
+  allergens: string[];
+  useCount: number;
+}
+
+export type LibraryTab = "usual" | "favorites" | "new" | "all";
+
 /** An RFC 9457 problem returned by the API. */
 export interface Problem {
   type?: string;
@@ -305,6 +324,11 @@ export const api = {
       }
     }
     throw new ApiError({ title: "The answer was interrupted. Please try again.", status: 0 });
+  },
+
+  library: (opts: { tab?: LibraryTab; meal?: MealType; q?: string } = {}) => {
+    const qs = new URLSearchParams(Object.entries(opts).filter(([, v]) => v) as [string, string][]).toString();
+    return json<{ data: LibraryFood[] }>("GET", `/food-library${qs ? `?${qs}` : ""}`).then((r) => r.data);
   },
 
   /** Downloads an export as a file. */

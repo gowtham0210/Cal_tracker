@@ -12,6 +12,7 @@ import { exports } from "./routes/exports.js";
 import { favoriteFoods, foodEntries } from "./routes/food.js";
 import { foodEstimates } from "./routes/food-estimates.js";
 import { insights } from "./routes/insights.js";
+import { library } from "./routes/library.js";
 import { me } from "./routes/me.js";
 import { profile } from "./routes/profile.js";
 
@@ -42,6 +43,7 @@ export function createApp() {
   v1.use("/journal-entries", journalEntries);
   v1.use("/food-estimates", foodEstimates);
   v1.use("/insights", insights);
+  v1.use("/food-library", library);
   v1.use("/coach", coach);
   v1.use("/exports", exports);
   app.use("/api/v1", v1);

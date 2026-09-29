@@ -1,7 +1,7 @@
 "use client";
 
 import clsx from "clsx";
-import { Activity, BookHeart, Home, LineChart, LogOut, Menu, MessageCircle, Plus, Scale, Settings, Trophy, Utensils } from "lucide-react";
+import { Activity, BookHeart, CalendarDays, Home, LineChart, LogOut, Menu, MessageCircle, Plus, Scale, Settings, Trophy, Utensils } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
@@ -16,6 +16,7 @@ import { currentStreak } from "@/lib/calc";
 const NAV = [
   { href: "/", label: "Today", icon: Home },
   { href: "/food", label: "Food", icon: Utensils },
+  { href: "/plan", label: "Plan", icon: CalendarDays },
   { href: "/body", label: "Body", icon: Scale },
   { href: "/exercise", label: "Exercise", icon: Activity },
   { href: "/journal", label: "Journal", icon: BookHeart },

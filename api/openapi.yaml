@@ -100,6 +100,17 @@ tags:
     summary: CSV downloads
     description: CSV downloads of each log.
     kind: nav
+  - name: Planner
+    summary: Diet chart planner
+    description: |
+      Plan a week of meals from the food library. Every number in a plan is the library's
+      per-serving nutrition times the planned quantity; the AI only chooses foods and portions.
+    kind: nav
+  - name: Library
+    summary: Food library
+    description: Foods with fixed per-serving nutrition, built from logs, favorites, curated dishes and reviewed AI suggestions.
+    parent: Planner
+    kind: nav
 
 paths:
   # ---------------------------------------------------------------- Auth
@@ -1127,6 +1138,58 @@ paths:
         "404":
           $ref: "#/components/responses/ProfileRequired"
 
+  # ---------------------------------------------------------------- Food library
+  /food-library:
+    get:
+      tags: [Library]
+      operationId: listLibraryFoods
+      summary: List library foods
+      description: |
+        The library is kept in sync with the user's food log and favorites and includes curated
+        dishes in their food style.
+
+        - `usual`: foods the user has logged, most often eaten first, then curated dishes in their food style.
+        - `favorites`: their favorite foods.
+        - `new`: foods added from AI suggestions.
+        - `all`: everything, by name.
+
+        `q` searches names across the whole library (and ignores `tab`).
+      parameters:
+        - name: tab
+          in: query
+          schema:
+            type: string
+            enum: [usual, favorites, new, all]
+            default: usual
+        - name: meal
+          in: query
+          description: Only foods usually eaten at this meal.
+          schema:
+            $ref: "#/components/schemas/MealType"
+        - name: q
+          in: query
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 100
+      responses:
+        "200":
+          description: Library foods, at most 500.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/LibraryFood"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
   # ---------------------------------------------------------------- Export
   /exports/{kind}:
     get:
@@ -2140,6 +2203,68 @@ components:
           items:
             type: string
           examples: [[high protein, 5 min]]
+
+    # ---------- Planner
+    DietType:
+      type: string
+      enum: [veg, eggetarian, non-veg]
+    LibraryFood:
+      type: object
+      additionalProperties: false
+      required: [id, name, meal, serving, calories, protein, carbs, fat, source, confidence, cuisine, diet, allergens, useCount]
+      properties:
+        id:
+          $ref: "#/components/schemas/Id"
+          readOnly: true
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        meal:
+          $ref: "#/components/schemas/MealType"
+          description: The meal this food is usually eaten at.
+        serving:
+          type: string
+          minLength: 1
+          maxLength: 60
+          description: What one serving is, in words.
+          examples: [1 plate, 2 pieces, 1 cup]
+        calories:
+          $ref: "#/components/schemas/Kcal"
+          description: Per serving.
+        protein:
+          $ref: "#/components/schemas/Grams"
+        carbs:
+          $ref: "#/components/schemas/Grams"
+        fat:
+          $ref: "#/components/schemas/Grams"
+        source:
+          type: string
+          enum: [logged, favorite, curated, ai]
+          readOnly: true
+        confidence:
+          type: [string, "null"]
+          enum: [high, medium, low, null]
+          description: For AI-estimated foods, how sure the estimate was.
+        cuisine:
+          type: [string, "null"]
+          description: Food style, when known.
+          examples: [tamil-nadu]
+        diet:
+          oneOf:
+            - $ref: "#/components/schemas/DietType"
+            - type: "null"
+          description: Veg, eggetarian or non-veg, when known.
+        allergens:
+          type: array
+          items:
+            type: string
+          description: Known allergens, e.g. peanut, dairy, gluten.
+        useCount:
+          type: integer
+          minimum: 0
+          readOnly: true
+          description: How many times the user has logged this food.
 
     # ---------- Errors
     Problem:

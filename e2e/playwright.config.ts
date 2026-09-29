@@ -15,9 +15,10 @@ export default defineConfig({
     baseURL: `http://localhost:${WEB_PORT}`,
     trace: "retain-on-failure",
   },
+  // Tags: untagged tests run on desktop only; @mobile runs on desktop and phone; @phone runs on phone only.
   projects: [
-    { name: "desktop", use: { ...devices["Desktop Chrome"], viewport: { width: 1366, height: 900 } } },
-    { name: "mobile", use: { ...devices["Pixel 7"] }, grep: /@mobile/ },
+    { name: "desktop", use: { ...devices["Desktop Chrome"], viewport: { width: 1366, height: 900 } }, grepInvert: /@phone/ },
+    { name: "mobile", use: { ...devices["Pixel 7"] }, grep: /@mobile|@phone/ },
   ],
   webServer: [
     {

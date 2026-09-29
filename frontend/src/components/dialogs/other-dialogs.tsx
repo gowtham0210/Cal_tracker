@@ -1,20 +1,7 @@
 "use client";
 
 import clsx from "clsx";
-import {
-  Activity,
-  BookHeart,
-  ChevronRight,
-  Droplet,
-  Dumbbell,
-  LineChart,
-  MessageCircle,
-  Ruler,
-  Scale,
-  Settings,
-  Trophy,
-  Utensils,
-} from "lucide-react";
+import { Activity, BookHeart, CalendarDays, ChevronRight, Droplet, Dumbbell, LineChart, MessageCircle, Ruler, Scale, Settings, Trophy, Utensils } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { bmi, bmiCategory, fmt1, latestWeight, lengthIn, lengthOut, lUnit, weightIn, weightOut, wUnit } from "@/lib/calc";
@@ -364,6 +351,7 @@ export function QuickAddDialog() {
 
 /* ---------------- More (mobile nav overflow) ---------------- */
 export const MORE_LINKS = [
+  { href: "/plan", label: "Plan", desc: "Weekly diet chart", icon: CalendarDays },
   { href: "/body", label: "Body", desc: "Weight, BMI & measurements", icon: Scale },
   { href: "/exercise", label: "Exercise", desc: "Workouts & calories burned", icon: Activity },
   { href: "/journal", label: "Journal", desc: "Mood, sleep & notes", icon: BookHeart },

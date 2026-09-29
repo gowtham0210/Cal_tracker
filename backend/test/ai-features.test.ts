@@ -191,7 +191,7 @@ describe("GET /coach/meal-suggestions", () => {
     const tamil = await api("GET", "/coach/meal-suggestions?meal=breakfast&limit=3", { token });
     assert.equal(tamil.status, 200);
     assert.equal(tamil.body.data.length, 3);
-    assert.ok(tamil.body.data.every((i: { meal: string; name: string }) => i.meal === "breakfast" && /(idli|pongal|dosa|adai|upma)/i.test(i.name)), JSON.stringify(tamil.body.data));
+    assert.ok(tamil.body.data.every((i: { meal: string; name: string }) => i.meal === "breakfast" && /(idli|pongal|dosa|adai|upma|koozh)/i.test(i.name)), JSON.stringify(tamil.body.data));
 
     await api("PATCH", "/me/profile", { token, body: { cuisine: "north-indian" } });
     const north = await api("GET", "/coach/meal-suggestions?meal=dinner&limit=2", { token });
