@@ -174,22 +174,28 @@ describe("GET /coach/meal-suggestions", () => {
   test("keeps only ideas that fit the remaining budget and the requested meal", async () => {
     const { token } = await onboardedUser();
     await api("POST", "/food-entries", { token, body: { date: "2026-09-29", meal: "lunch", name: "Big lunch", calories: 1400, protein: 50, carbs: 100, fat: 50 } });
-    fake.json_["meal-ideas@v1"] = () => ({ ideas: [idea("Fits", 450), idea("Too big", 900), idea("Wrong meal", 300, "breakfast"), idea("fits", 400)] });
+    fake.json_["meal-ideas@v2"] = () => ({ ideas: [idea("Fits", 450), idea("Too big", 900), idea("Wrong meal", 300, "breakfast"), idea("fits", 400)] });
     const r = await api("GET", "/coach/meal-suggestions?asOf=2026-09-29&meal=dinner", { token });
     assert.equal(r.status, 200);
     assert.deepEqual(r.body.data.map((i: { name: string }) => i.name), ["Fits"], "over budget, wrong meal and duplicate names are dropped");
     const facts = JSON.parse(text(fake.last("meal-ideas")!.messages[1]).replace(/<\/?facts>/g, ""));
     assert.equal(facts.maxCalories, 500);
+    assert.equal(facts.cuisine, "tamil-nadu");
+    assert.match(text(fake.last("meal-ideas")!.messages[0]), /tamil-nadu: Tamil Nadu home food/);
     assert.deepEqual(facts.usualFoods, ["Big lunch"]);
   });
 
-  test("falls back to curated ideas when the model is unavailable", async () => {
+  test("falls back to curated ideas in the user's food style when the model is unavailable", async () => {
     const { token } = await onboardedUser();
     setLlm(new DisabledLlm());
-    const r = await api("GET", "/coach/meal-suggestions?meal=snack&limit=2", { token });
-    assert.equal(r.status, 200);
-    assert.equal(r.body.data.length, 2);
-    assert.ok(r.body.data.every((i: { meal: string }) => i.meal === "snack"));
+    const tamil = await api("GET", "/coach/meal-suggestions?meal=breakfast&limit=3", { token });
+    assert.equal(tamil.status, 200);
+    assert.equal(tamil.body.data.length, 3);
+    assert.ok(tamil.body.data.every((i: { meal: string; name: string }) => i.meal === "breakfast" && /(idli|pongal|dosa|adai|upma)/i.test(i.name)), JSON.stringify(tamil.body.data));
+
+    await api("PATCH", "/me/profile", { token, body: { cuisine: "north-indian" } });
+    const north = await api("GET", "/coach/meal-suggestions?meal=dinner&limit=2", { token });
+    assert.ok(north.body.data.some((i: { name: string }) => /(chapati|paneer|dal)/i.test(i.name)), JSON.stringify(north.body.data));
   });
 });
 

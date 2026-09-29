@@ -233,6 +233,7 @@ coach.get("/meal-suggestions", aiRateLimit, async (req, res) => {
 
   const facts = {
     count: q.limit,
+    cuisine: p.cuisine,
     maxCalories: budget,
     proteinLeft_g: proteinLeft,
     meal: q.meal ?? null,
@@ -255,6 +256,6 @@ coach.get("/meal-suggestions", aiRateLimit, async (req, res) => {
       console.log(JSON.stringify({ event: "ai_fallback", prompt: mealIdeas.PROMPT, reason: err instanceof HttpError ? err.slug : "error" }));
     }
   }
-  if (!ideas?.length) ideas = rankIdeas(budget, proteinLeft, q.meal as Meal | undefined, q.limit);
+  if (!ideas?.length) ideas = rankIdeas(budget, proteinLeft, q.meal as Meal | undefined, q.limit, p.cuisine);
   res.json({ data: ideas });
 });

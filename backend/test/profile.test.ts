@@ -67,6 +67,15 @@ describe("/me/profile", () => {
     assert.equal((await api("PUT", "/me/profile", { token: u.token, body: { ...PROFILE, timeZone: "Asia/Kolkata" } })).status, 201);
   });
 
+  test("stores the food style, and rejects unknown ones", async () => {
+    const u = await newUser();
+    await api("PUT", "/me/profile", { token: u.token, body: PROFILE });
+    assert.equal((await api("PATCH", "/me/profile", { token: u.token, body: { cuisine: "north-indian" } })).body.cuisine, "north-indian");
+    const bad = await api("PATCH", "/me/profile", { token: u.token, body: { cuisine: "martian" } });
+    assert.equal(bad.status, 400);
+    assert.deepEqual(bad.body.errors.map((e: { pointer: string }) => e.pointer), ["/cuisine"]);
+  });
+
   test("PATCH needs an existing profile", async () => {
     const u = await newUser();
     assert.equal((await api("PATCH", "/me/profile", { token: u.token, body: { calorieGoal: 1800 } })).status, 404);

@@ -4,14 +4,14 @@ import { Sparkles, Upload } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { signOut, useSessionReady } from "@/components/providers";
-import { Button, Card, Field, Input, ProgressBar, Segmented } from "@/components/ui";
+import { Button, Card, Field, Input, ProgressBar, Segmented, Select } from "@/components/ui";
 import { api } from "@/lib/api";
 import { lengthIn, lUnit, weightIn, wUnit } from "@/lib/calc";
 import { todayKey } from "@/lib/date";
 import { importLocalData, readLocalData } from "@/lib/import-local";
 import { useCurrentUser } from "@/lib/session";
 import { useStore } from "@/lib/store";
-import type { UnitSystem } from "@/lib/types";
+import { CUISINE_LABEL, type Cuisine, type UnitSystem } from "@/lib/types";
 import { errorsFrom, FormError } from "./auth-form";
 
 const browserTimeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
@@ -23,6 +23,7 @@ export function OnboardingView() {
   const user = useCurrentUser();
   const router = useRouter();
   const [units, setUnits] = useState<UnitSystem>("metric");
+  const [cuisine, setCuisine] = useState<Cuisine>("tamil-nadu");
   const [values, setValues] = useState<Form>({ height: "", weight: "", goal: "", calories: "1800" });
   const [errors, setErrors] = useState<Partial<Record<keyof Form | "form", string>>>({});
   const [busy, setBusy] = useState<"save" | "demo" | "import" | null>(null);
@@ -75,6 +76,7 @@ export function OnboardingView() {
         units,
         theme: "system",
         timeZone: browserTimeZone(),
+        cuisine,
       });
       finish();
     } catch (err) {
@@ -87,7 +89,7 @@ export function OnboardingView() {
     setBusy("demo");
     try {
       await api.loadDemoData();
-      await api.updateProfile({ timeZone: browserTimeZone() });
+      await api.updateProfile({ timeZone: browserTimeZone(), cuisine });
       finish();
     } catch (err) {
       setErrors(errorsFrom(err));
@@ -139,6 +141,15 @@ export function OnboardingView() {
               <Input id="o-cal" inputMode="numeric" suffix="kcal" value={values.calories} onChange={set("calories")} aria-invalid={!!errors.calories} />
             </Field>
           </div>
+          <Field label="Food style for meal ideas" htmlFor="o-cuisine">
+            <Select id="o-cuisine" value={cuisine} onChange={(e) => setCuisine(e.target.value as Cuisine)}>
+              {Object.entries(CUISINE_LABEL).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </Select>
+          </Field>
           <p className="text-xs text-subtle">About 500 kcal a day below what you burn loses roughly 0.5 kg (1 lb) a week.</p>
           <FormError message={errors.form} />
           <Button type="submit" size="lg" className="w-full" loading={busy === "save"} disabled={!ready || !!busy}>

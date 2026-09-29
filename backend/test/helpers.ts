@@ -62,6 +62,7 @@ export const PROFILE = {
   units: "metric",
   theme: "system",
   timeZone: "Asia/Kolkata",
+  cuisine: "tamil-nadu",
 };
 
 /** A user who has finished onboarding. */

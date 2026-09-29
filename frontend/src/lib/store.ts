@@ -121,6 +121,7 @@ const toProfile = (p: ApiProfile, user: User): Profile => ({
   units: p.units,
   theme: p.theme,
   timeZone: p.timeZone,
+  cuisine: p.cuisine,
 });
 
 const byDate = <T extends { date: string }>(a: T, b: T) => a.date.localeCompare(b.date);

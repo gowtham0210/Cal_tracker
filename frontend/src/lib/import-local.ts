@@ -65,6 +65,7 @@ export async function importLocalData(d: LocalData, timeZone: string, onProgress
     units: p.units,
     theme: p.theme,
     timeZone,
+    cuisine: p.cuisine ?? "tamil-nadu",
   };
   await api.putProfile(profile);
 

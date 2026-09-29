@@ -5,7 +5,7 @@ import { named } from "../db/named.js";
 import { generateDemoData } from "../lib/demo.js";
 import { todayIn } from "../lib/dates.js";
 import { toUser, type UserRow } from "../lib/users.js";
-import { getProfile, saveProfile } from "./profile.js";
+import { getProfile, saveProfile, type Cuisine } from "./profile.js";
 import { HttpError } from "../http/problem.js";
 import { body, email, parse, personName } from "../http/validate.js";
 
@@ -33,9 +33,9 @@ const clearLogs = db.transaction((userId: string) => {
   }
 });
 
-const insertDemo = db.transaction((userId: string, d: ReturnType<typeof generateDemoData>, timeZone: string) => {
+const insertDemo = db.transaction((userId: string, d: ReturnType<typeof generateDemoData>, timeZone: string, cuisine: Cuisine) => {
   for (const t of LOG_TABLES) db.prepare(`DELETE FROM ${t} WHERE user_id = ?`).run(userId);
-  saveProfile(userId, { ...d.profile, timeZone });
+  saveProfile(userId, { ...d.profile, timeZone, cuisine });
   const run = (sql: string, rows: object[]) => {
     const stmt = named(sql);
     for (const r of rows) stmt.run({ userId, ...(r as Record<string, unknown>) });
@@ -90,7 +90,8 @@ me.delete("/data", (_req, res) => {
 
 // Replaces the logs and profile goals with the sample journey, keeping the user's time zone.
 me.put("/demo-data", (_req, res) => {
-  const timeZone = getProfile(res.locals.userId)?.timeZone ?? "UTC";
-  insertDemo(res.locals.userId, generateDemoData(todayIn(timeZone)), timeZone);
+  const current = getProfile(res.locals.userId);
+  const timeZone = current?.timeZone ?? "UTC";
+  insertDemo(res.locals.userId, generateDemoData(todayIn(timeZone)), timeZone, current?.cuisine ?? "tamil-nadu");
   res.status(204).end();
 });

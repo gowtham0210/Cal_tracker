@@ -60,6 +60,14 @@ export interface JournalEntry {
 }
 
 export type UnitSystem = "metric" | "imperial";
+export type Cuisine = "tamil-nadu" | "south-indian" | "north-indian" | "any";
+
+export const CUISINE_LABEL: Record<Cuisine, string> = {
+  "tamil-nadu": "Tamil Nadu",
+  "south-indian": "South Indian",
+  "north-indian": "North Indian",
+  any: "No preference",
+};
 export type Theme = "system" | "light" | "dark";
 
 export interface Profile {
@@ -77,6 +85,8 @@ export interface Profile {
   theme: Theme;
   /** IANA time zone; decides what "today" means on the server. */
   timeZone: string;
+  /** Food style for meal suggestions. */
+  cuisine: Cuisine;
 }
 
 export interface ChatMessage {

@@ -1,7 +1,7 @@
 /**
  * Client for the Lighter API. Types mirror the schemas in api/openapi.yaml.
  */
-import type { MealType, Theme, UnitSystem } from "./types";
+import type { Cuisine, MealType, Theme, UnitSystem } from "./types";
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api/v1";
 
@@ -40,6 +40,7 @@ export interface ApiProfile {
   units: UnitSystem;
   theme: Theme;
   timeZone: string;
+  cuisine: Cuisine;
   updatedAt?: string;
 }
 

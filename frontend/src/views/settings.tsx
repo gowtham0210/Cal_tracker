@@ -4,13 +4,13 @@ import { Download, FileSpreadsheet, LogOut, Monitor, Moon, RotateCcw, Sun, Trash
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { signOut } from "@/components/providers";
-import { Button, Card, CardHeader, Field, Input, PageHeader, Segmented, Sheet } from "@/components/ui";
+import { Button, Card, CardHeader, Field, Input, PageHeader, Segmented, Select, Sheet } from "@/components/ui";
 import { useToast } from "@/components/ui/toast";
 import { lengthIn, lengthOut, lUnit } from "@/lib/calc";
 import { api, ApiError } from "@/lib/api";
 import { downloadFile, type ExportKind } from "@/lib/csv";
 import { useStore } from "@/lib/store";
-import type { Theme, UnitSystem } from "@/lib/types";
+import { CUISINE_LABEL, type Cuisine, type Theme, type UnitSystem } from "@/lib/types";
 
 /** Number input that commits on blur/Enter and reverts invalid values. */
 function NumberSetting({
@@ -164,6 +164,29 @@ export function SettingsView() {
         <Card>
           <CardHeader title="Preferences" />
           <div className="space-y-4">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <label htmlFor="s-cuisine" className="text-sm font-medium">
+                  Food style
+                </label>
+                <p className="text-xs text-muted">Used for smart meal suggestions</p>
+              </div>
+              <Select
+                id="s-cuisine"
+                className="w-44"
+                value={profile.cuisine}
+                onChange={(e) => {
+                  updateProfile({ cuisine: e.target.value as Cuisine });
+                  saved("Food style saved");
+                }}
+              >
+                {Object.entries(CUISINE_LABEL).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </Select>
+            </div>
             <div className="flex items-center justify-between gap-4">
               <div>
                 <p className="text-sm font-medium">Units</p>

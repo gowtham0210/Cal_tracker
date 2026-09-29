@@ -8,7 +8,7 @@ import { dayTotals, fmtInt } from "@/lib/calc";
 import { ApiError } from "@/lib/api";
 import type { MealIdea } from "@/lib/foods";
 import { useStore } from "@/lib/store";
-import type { Mood } from "@/lib/types";
+import { CUISINE_LABEL, type Mood } from "@/lib/types";
 import { MEAL_LABEL } from "@/lib/ui";
 import { Button, Card, CardHeader, ProgressBar, Ring, Skeleton } from "./ui";
 import { useToast } from "./ui/toast";
@@ -251,7 +251,7 @@ export function SuggestionsCard({ date }: { date: string }) {
         title="Smart suggestions"
         subtitle={
           remaining > 0
-            ? `Ideas that fit your ${remaining} kcal left${proteinLeft > 20 ? ` and ${proteinLeft} g protein to go` : ""}`
+            ? `${profile.cuisine === "any" ? "Ideas" : `${CUISINE_LABEL[profile.cuisine]} ideas`} that fit your ${remaining} kcal left${proteinLeft > 20 ? ` and ${proteinLeft} g protein to go` : ""}`
             : "You're at your goal — here are light options if you're hungry"
         }
         action={

@@ -22,8 +22,12 @@ export interface ProfileRow {
   units: "metric" | "imperial";
   theme: "system" | "light" | "dark";
   time_zone: string;
+  cuisine: Cuisine;
   updated_at: number;
 }
+
+export const CUISINES = ["tamil-nadu", "south-indian", "north-indian", "any"] as const;
+export type Cuisine = (typeof CUISINES)[number];
 
 export interface Profile {
   heightCm: number;
@@ -38,6 +42,7 @@ export interface Profile {
   units: "metric" | "imperial";
   theme: "system" | "light" | "dark";
   timeZone: string;
+  cuisine: Cuisine;
   updatedAt: string;
 }
 
@@ -68,6 +73,7 @@ export function getProfile(userId: string): Profile | undefined {
     units: r.units,
     theme: r.theme,
     timeZone: r.time_zone,
+    cuisine: r.cuisine,
     updatedAt: iso(r.updated_at),
   };
 }
@@ -93,6 +99,7 @@ const fields = {
   units: z.enum(["metric", "imperial"], "Must be metric or imperial."),
   theme: z.enum(["system", "light", "dark"], "Must be system, light or dark."),
   timeZone,
+  cuisine: z.enum(CUISINES, "Must be tamil-nadu, south-indian, north-indian or any."),
 };
 const profileInput = body({ ...fields, updatedAt: z.unknown().optional() });
 const profilePatch = body({
@@ -106,14 +113,15 @@ type ProfileInput = Omit<Profile, "updatedAt">;
 
 const writeProfile = named(
   `INSERT INTO profiles (user_id, height_cm, goal_weight, start_date, calorie_goal, protein_goal, carbs_goal, fat_goal,
-                         track_macros, water_goal, glass_ml, units, theme, time_zone)
+                         track_macros, water_goal, glass_ml, units, theme, time_zone, cuisine)
    VALUES (@userId, @heightCm, @goalWeight, @startDate, @calorieGoal, @protein, @carbs, @fat,
-           @trackMacros, @waterGoal, @glassMl, @units, @theme, @timeZone)
+           @trackMacros, @waterGoal, @glassMl, @units, @theme, @timeZone, @cuisine)
    ON CONFLICT (user_id) DO UPDATE SET
      height_cm = excluded.height_cm, goal_weight = excluded.goal_weight, start_date = excluded.start_date,
      calorie_goal = excluded.calorie_goal, protein_goal = excluded.protein_goal, carbs_goal = excluded.carbs_goal,
      fat_goal = excluded.fat_goal, track_macros = excluded.track_macros, water_goal = excluded.water_goal,
-     glass_ml = excluded.glass_ml, units = excluded.units, theme = excluded.theme, time_zone = excluded.time_zone`,
+     glass_ml = excluded.glass_ml, units = excluded.units, theme = excluded.theme, time_zone = excluded.time_zone,
+     cuisine = excluded.cuisine`,
 );
 
 /** Writes the whole profile and its start weigh-in in one transaction. */

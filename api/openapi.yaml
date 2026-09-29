@@ -1091,7 +1091,8 @@ paths:
       summary: Meal ideas that fit what is left today
       description: |
         Uses the calories and protein remaining on `asOf`, preferring protein-dense ideas when protein is behind.
-        Ideas over the remaining budget are dropped. If the AI is unavailable, curated ideas are used.
+        Ideas follow the profile's `cuisine`. Ideas over the remaining budget are dropped.
+        If the AI is unavailable, curated ideas in the same food style are used.
       parameters:
         - $ref: "#/components/parameters/asOf"
         - name: meal
@@ -1465,7 +1466,7 @@ components:
       type: object
       additionalProperties: false
       required:
-        [heightCm, startWeight, goalWeight, startDate, calorieGoal, macroGoals, trackMacros, waterGoal, glassMl, units, theme, timeZone]
+        [heightCm, startWeight, goalWeight, startDate, calorieGoal, macroGoals, trackMacros, waterGoal, glassMl, units, theme, timeZone, cuisine]
       properties:
         heightCm:
           type: number
@@ -1510,6 +1511,8 @@ components:
           type: string
           description: IANA time zone. Decides what "today" means for this user.
           examples: [Asia/Kolkata]
+        cuisine:
+          $ref: "#/components/schemas/Cuisine"
         updatedAt:
           $ref: "#/components/schemas/Timestamp"
           readOnly: true
@@ -1526,6 +1529,14 @@ components:
           units: metric
           theme: system
           timeZone: Asia/Kolkata
+          cuisine: tamil-nadu
+    Cuisine:
+      type: string
+      enum: [tamil-nadu, south-indian, north-indian, any]
+      default: tamil-nadu
+      description: |
+        Food style for meal suggestions: Tamil Nadu (idli, pongal, sambar, rasam, kootu, poriyal,
+        millets and so on), South Indian, North Indian, or `any` for no preference.
     ProfilePatch:
       type: object
       additionalProperties: false
@@ -1564,6 +1575,8 @@ components:
           $ref: "#/components/schemas/Profile/properties/theme"
         timeZone:
           $ref: "#/components/schemas/Profile/properties/timeZone"
+        cuisine:
+          $ref: "#/components/schemas/Cuisine"
 
     # ---------- Food
     FoodSource:
