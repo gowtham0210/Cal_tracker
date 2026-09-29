@@ -272,7 +272,8 @@ export function Sparkline({ data, color = "var(--brand)", height = 44 }: { data:
   return (
     <div style={{ height }} className="w-full" aria-hidden>
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={d} margin={{ top: 4, right: 2, bottom: 4, left: 2 }}>
+        {/* Decorative: hidden from screen readers, so it must not take keyboard focus either. */}
+        <LineChart data={d} margin={{ top: 4, right: 2, bottom: 4, left: 2 }} accessibilityLayer={false}>
           <YAxis hide domain={["dataMin - 0.3", "dataMax + 0.3"]} />
           <Line type="monotone" dataKey="v" stroke={color} strokeWidth={2} dot={false} isAnimationActive={false} />
         </LineChart>

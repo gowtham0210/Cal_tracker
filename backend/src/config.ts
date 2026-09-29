@@ -11,4 +11,6 @@ export const config = {
   jwtSecret: required("JWT_SECRET", (v) => v.length >= 32, "set it to a random string of at least 32 characters (see .env.example)"),
   // Access token lifetime in seconds. There are no refresh tokens yet, so this is also the session length.
   accessTokenTtl: Number(process.env.ACCESS_TOKEN_TTL ?? 7 * 24 * 60 * 60),
+  // Registrations allowed per IP per 15 minutes (raised by the E2E suite, which registers a user per test).
+  registerLimit: Number(process.env.AUTH_REGISTER_LIMIT ?? 20),
 };

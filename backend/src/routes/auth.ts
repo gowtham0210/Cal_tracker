@@ -3,6 +3,7 @@ import { Router } from "express";
 import { SqliteError } from "better-sqlite3";
 import { z } from "zod";
 import { hashPassword, verifyPassword } from "../auth/password.js";
+import { config } from "../config.js";
 import { issueAccessToken } from "../auth/tokens.js";
 import { db } from "../db/index.js";
 import { HttpError } from "../http/problem.js";
@@ -56,7 +57,7 @@ const limitByEmail = rateLimit({
 
 export const auth = Router();
 
-auth.post("/register", limitByIp(20), async (req, res) => {
+auth.post("/register", limitByIp(config.registerLimit), async (req, res) => {
   const { password, ...profile } = parse(registerInput, req.body);
 
   // Hash before touching the database so the write transaction stays short.

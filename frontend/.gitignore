@@ -40,3 +40,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 !.env.example
+
+# E2E build
+/.next-e2e/
