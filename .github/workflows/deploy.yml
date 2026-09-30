@@ -46,6 +46,8 @@ jobs:
         run: |
           npm ci
           npm run lint
+          # LayoutProps and the other route types are generated; a fresh checkout has none yet.
+          npx next typegen
           npx tsc --noEmit
 
   build:
