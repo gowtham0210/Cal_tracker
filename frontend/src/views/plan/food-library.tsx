@@ -8,6 +8,7 @@ import { api, ApiError, type LibraryFood, type LibraryTab } from "@/lib/api";
 import { useStore } from "@/lib/store";
 import { CUISINE_LABEL, type MealType } from "@/lib/types";
 import { MEAL_EMOJI, MEAL_LABEL, MEALS } from "@/lib/ui";
+import { AllergyWarning } from "./allergy-warning";
 
 const TABS: { value: Exclude<LibraryTab, "all" | "new">; label: string }[] = [
   { value: "usual", label: "Usual" },
@@ -71,6 +72,7 @@ export function FoodLibrary({ meal: initialMeal, renderAction, wrapCard, classNa
           <p className="tabular mt-0.5 text-xs text-muted">
             {f.serving} · {Math.round(f.calories)} kcal
           </p>
+          <AllergyWarning food={f} className="mt-0.5" />
         </div>
         {renderAction?.(f)}
       </div>

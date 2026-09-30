@@ -1,4 +1,4 @@
-import { api, type ApiProfile } from "./api";
+import { api, type ApiProfileInput } from "./api";
 import type { ExerciseEntry, FavoriteFood, FoodEntry, JournalEntry, MeasurementEntry, Profile, WeightEntry } from "./types";
 
 /**
@@ -52,7 +52,7 @@ async function pool(tasks: (() => Promise<unknown>)[], onDone: () => void, width
 
 export async function importLocalData(d: LocalData, timeZone: string, onProgress: (done: number, total: number) => void) {
   const p = d.profile!;
-  const profile: ApiProfile = {
+  const profile: ApiProfileInput = {
     heightCm: p.heightCm,
     startWeight: p.startWeight,
     goalWeight: p.goalWeight,

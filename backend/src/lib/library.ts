@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { db } from "../db/index.js";
 import { named } from "../db/named.js";
 import { CURATED_FOODS, CUISINE_STYLES, type Cuisine } from "./curated-foods.js";
+import { allergyConflicts, detectAllergens, detectDiet } from "./food-tags.js";
 
 // The food library: the planner's source of truth for nutrition. It is kept in sync with the
 // user's food log and favorites, and seeded with curated dishes.
@@ -26,7 +27,10 @@ export interface LibraryRow {
   last_used: string | null;
 }
 
-export const toLibraryFood = (r: LibraryRow) => ({
+/** A library food for the API. `allergies` are the user's, to flag conflicts. */
+export const toLibraryFood = (r: LibraryRow, allergies: string[]) => {
+  const allergens = JSON.parse(r.allergens) as string[];
+  return {
   id: r.id,
   name: r.name,
   meal: r.meal,
@@ -39,9 +43,11 @@ export const toLibraryFood = (r: LibraryRow) => ({
   confidence: r.confidence,
   cuisine: r.cuisine,
   diet: r.diet,
-  allergens: JSON.parse(r.allergens) as string[],
+  allergens,
+  allergyConflicts: allergyConflicts({ name: r.name, allergens, ingredients: r.ingredients ? (JSON.parse(r.ingredients) as { name: string }[]).map((i) => i.name) : [] }, allergies),
   useCount: r.use_count,
-});
+  };
+};
 export type LibraryFood = ReturnType<typeof toLibraryFood>;
 
 const insertCurated = named(
@@ -61,8 +67,8 @@ const loggedFoods = db.prepare<[string], { name: string; meal: LibraryRow["meal"
    WHERE l.rn = 1`,
 );
 const upsertLogged = named(
-  `INSERT INTO library_foods (id, user_id, name, meal, serving, calories, protein, carbs, fat, source, use_count, last_used)
-   VALUES (@id, @userId, @name, @meal, '1 serving', @calories, @protein, @carbs, @fat, 'logged', @n, @last)
+  `INSERT INTO library_foods (id, user_id, name, meal, serving, calories, protein, carbs, fat, source, diet, allergens, use_count, last_used)
+   VALUES (@id, @userId, @name, @meal, '1 serving', @calories, @protein, @carbs, @fat, 'logged', @diet, @allergens, @n, @last)
    ON CONFLICT (user_id, name) DO UPDATE SET
      use_count = excluded.use_count,
      last_used = excluded.last_used,
@@ -81,9 +87,13 @@ const newFavorites = db.prepare<[string, string], { name: string; meal: LibraryR
    AND NOT EXISTS (SELECT 1 FROM library_foods l WHERE l.user_id = ? AND l.name = f.name)`,
 );
 const insertFavorite = named(
-  `INSERT INTO library_foods (id, user_id, name, meal, serving, calories, protein, carbs, fat, source)
-   VALUES (@id, @userId, @name, @meal, '1 serving', @calories, @protein, @carbs, @fat, 'favorite')`,
+  `INSERT INTO library_foods (id, user_id, name, meal, serving, calories, protein, carbs, fat, source, diet, allergens)
+   VALUES (@id, @userId, @name, @meal, '1 serving', @calories, @protein, @carbs, @fat, 'favorite', @diet, @allergens)`,
 );
+// Logged foods and favorites saved before tags were detected.
+const untagged = db.prepare<[string], { id: string; name: string }>("SELECT id, name FROM library_foods WHERE user_id = ? AND source IN ('logged', 'favorite') AND diet IS NULL");
+const setTags = db.prepare<[string, string, string]>("UPDATE library_foods SET diet = ?, allergens = ? WHERE id = ?");
+const tags = (name: string) => ({ diet: detectDiet(name), allergens: JSON.stringify(detectAllergens(name)) });
 const curatedSeeded = db.prepare<[string], { n: number }>("SELECT count(*) AS n FROM library_foods WHERE user_id = ? AND source = 'curated'");
 
 /** Brings the library up to date with the user's log and favorites (cheap when nothing changed). */
@@ -99,11 +109,15 @@ export const syncLibrary = db.transaction((userId: string) => {
       });
     }
   }
-  for (const f of loggedFoods.all(userId)) upsertLogged.run({ id: randomUUID(), userId, ...f });
-  for (const f of newFavorites.all(userId, userId)) insertFavorite.run({ id: randomUUID(), userId, ...f });
+  for (const f of loggedFoods.all(userId)) upsertLogged.run({ id: randomUUID(), userId, ...f, ...tags(f.name) });
+  for (const f of newFavorites.all(userId, userId)) insertFavorite.run({ id: randomUUID(), userId, ...f, ...tags(f.name) });
+  for (const f of untagged.all(userId)) {
+    const t = tags(f.name);
+    setTags.run(t.diet, t.allergens, f.id);
+  }
 });
 
-export function listLibrary(userId: string, opts: { tab: "usual" | "favorites" | "new" | "all"; meal?: string; q?: string; cuisine: Cuisine }) {
+export function listLibrary(userId: string, opts: { tab: "usual" | "favorites" | "new" | "all"; meal?: string; q?: string; cuisine: Cuisine; allergies: string[] }) {
   syncLibrary(userId);
   const where = ["user_id = @userId"];
   const params: Record<string, unknown> = { userId, meal: opts.meal, q: opts.q ? `%${opts.q.replace(/[\\%_]/g, (c) => `\\${c}`)}%` : undefined };
@@ -126,5 +140,5 @@ export function listLibrary(userId: string, opts: { tab: "usual" | "favorites" |
     order = "use_count DESC, last_used DESC, name COLLATE NOCASE";
   }
   const rows = named<LibraryRow>(`SELECT * FROM library_foods WHERE ${where.join(" AND ")} ORDER BY ${order} LIMIT 500`).all(params);
-  return rows.map(toLibraryFood);
+  return rows.map((r) => toLibraryFood(r, opts.allergies));
 }

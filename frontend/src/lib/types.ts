@@ -68,6 +68,13 @@ export const CUISINE_LABEL: Record<Cuisine, string> = {
   "north-indian": "North Indian",
   any: "No preference",
 };
+
+export type DietType = "veg" | "eggetarian" | "non-veg";
+export const DIET_LABEL: Record<DietType, string> = { veg: "Veg", eggetarian: "Eggetarian", "non-veg": "Non-veg" };
+export type Budget = "low" | "medium" | "high";
+
+/** Allergens the server knows; any other allergy is matched against food names. */
+export const COMMON_ALLERGENS = ["peanut", "tree nut", "dairy", "egg", "gluten", "soy", "fish", "shellfish", "sesame"] as const;
 export type Theme = "system" | "light" | "dark";
 
 export interface Profile {
@@ -87,6 +94,12 @@ export interface Profile {
   timeZone: string;
   /** Food style for meal suggestions. */
   cuisine: Cuisine;
+  dietType: DietType;
+  /** Lower-case; the server maps common names ("peanuts", "milk") onto COMMON_ALLERGENS. */
+  allergies: string[];
+  budget: Budget;
+  /** Rupees per day; used instead of `budget` when set. */
+  dailyBudget: number | null;
 }
 
 export interface ChatMessage {

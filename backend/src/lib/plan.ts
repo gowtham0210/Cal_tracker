@@ -69,11 +69,11 @@ export function ensurePlan(userId: string, weekStart: string, source: PlanRow["s
 }
 
 /** The full MealPlan response for a week. */
-export function buildPlan(userId: string, weekStart: string, calorieGoal: number) {
+export function buildPlan(userId: string, weekStart: string, calorieGoal: number, allergies: string[]) {
   const plan = planFor.get(userId, weekStart);
   const rows = plan ? itemsOf.all(plan.id) : [];
   const items = rows.map(({ f, plan_id: _p, food_id: _f, ...i }) => {
-    const food = toLibraryFood(JSON.parse(f) as LibraryRow);
+    const food = toLibraryFood(JSON.parse(f) as LibraryRow, allergies);
     return { id: i.id, date: i.date, meal: i.meal, quantity: i.quantity, position: i.position, food, ...round({ calories: food.calories * i.quantity, protein: food.protein * i.quantity, carbs: food.carbs * i.quantity, fat: food.fat * i.quantity }) };
   });
 

@@ -32,6 +32,7 @@ import type { MealType } from "@/lib/types";
 import { MEAL_LABEL } from "@/lib/ui";
 import { shortDay } from "@/lib/week";
 import type { SlotTarget } from "./add-food-sheet";
+import { allergyText } from "./allergy-warning";
 import { useUndoable } from "./use-undoable";
 
 /**
@@ -256,12 +257,13 @@ export function DraggableFood({ food, children }: { food: LibraryFood; children:
     id: `food:${food.id}`,
     data: { kind: "food", food } satisfies DragData,
   });
+  const warning = allergyText(food);
   return (
     <div
       ref={setNodeRef}
       {...attributes}
       {...listeners}
-      aria-label={`${food.name}, ${food.serving}, ${Math.round(food.calories)} kcal. Drag to a meal`}
+      aria-label={`${food.name}, ${food.serving}, ${Math.round(food.calories)} kcal. ${warning ? `${warning}. ` : ""}Drag to a meal`}
       className={clsx(
         "cursor-grab touch-manipulation select-none rounded-xl outline-none [-webkit-touch-callout:none] focus-visible:ring-2 focus-visible:ring-brand",
         isDragging && "outline-2 outline-dashed outline-brand",

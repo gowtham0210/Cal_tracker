@@ -1,7 +1,7 @@
 /**
  * Client for the Lighter API. Types mirror the schemas in api/openapi.yaml.
  */
-import type { Cuisine, MealType, Theme, UnitSystem } from "./types";
+import type { Budget, Cuisine, DietType, MealType, Theme, UnitSystem } from "./types";
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api/v1";
 
@@ -41,8 +41,15 @@ export interface ApiProfile {
   theme: Theme;
   timeZone: string;
   cuisine: Cuisine;
+  dietType: DietType;
+  allergies: string[];
+  budget: Budget;
+  dailyBudget: number | null;
   updatedAt?: string;
 }
+
+/** A PUT may leave food preferences out; the server keeps what's saved. */
+export type ApiProfileInput = Omit<ApiProfile, "dietType" | "allergies" | "budget" | "dailyBudget"> & Partial<ApiProfile>;
 
 export interface ApiFoodEntry {
   id: string;
@@ -136,6 +143,8 @@ export interface LibraryFood {
   cuisine: string | null;
   diet: "veg" | "eggetarian" | "non-veg" | null;
   allergens: string[];
+  /** The user's allergies this food conflicts with; empty when it's safe. */
+  allergyConflicts: string[];
   useCount: number;
 }
 
@@ -300,7 +309,7 @@ export const api = {
   loadDemoData: () => json<void>("PUT", "/me/demo-data"),
 
   profile: () => json<ApiProfile>("GET", "/me/profile"),
-  putProfile: (p: ApiProfile) => json<ApiProfile>("PUT", "/me/profile", { body: p }),
+  putProfile: (p: ApiProfileInput) => json<ApiProfile>("PUT", "/me/profile", { body: p }),
   updateProfile: (patch: Partial<ApiProfile>) => json<ApiProfile>("PATCH", "/me/profile", { body: patch }),
 
   foods: () => all<ApiFoodEntry>("/food-entries"),

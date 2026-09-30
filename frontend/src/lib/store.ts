@@ -127,6 +127,10 @@ const toProfile = (p: ApiProfile, user: User): Profile => ({
   theme: p.theme,
   timeZone: p.timeZone,
   cuisine: p.cuisine,
+  dietType: p.dietType,
+  allergies: p.allergies,
+  budget: p.budget,
+  dailyBudget: p.dailyBudget,
 });
 
 const byDate = <T extends { date: string }>(a: T, b: T) => a.date.localeCompare(b.date);
@@ -384,7 +388,12 @@ export const useStore = create<State>()((set, get) => {
           // The start weight is stored as the weigh-in on the start date.
           ...(changedStart ? { weights: [...s.weights.filter((w) => w.date !== next.startDate), { id: next.startDate, date: next.startDate, weight: next.startWeight }].sort(byDate) } : {}),
         }),
-        () => serial("profile", () => api.updateProfile(rest as Partial<ApiProfile>)),
+        // The server tidies allergy names ("Peanuts" becomes "peanut"), so adopt its list, unless
+        // the list has changed again since (that newer save will answer too).
+        () =>
+          serial("profile", () => api.updateProfile(rest as Partial<ApiProfile>)).then((saved) => {
+            if (rest.allergies && get().profile.allergies === rest.allergies) set((st) => ({ profile: { ...st.profile, allergies: saved.allergies } }));
+          }),
         "Couldn't save your settings.",
       );
     },

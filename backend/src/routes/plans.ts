@@ -15,7 +15,10 @@ export const weekParam = (req: Request) => parse(z.object({ weekStart: monday })
 const itemParam = (req: Request) => parse(z.object({ itemId: uuid }), { itemId: req.params.itemId }).itemId;
 
 /** The plan response for the current user and week. */
-export const planResponse = (userId: string, weekStart: string) => buildPlan(userId, weekStart, requireProfile(userId).calorieGoal);
+export const planResponse = (userId: string, weekStart: string) => {
+  const p = requireProfile(userId);
+  return buildPlan(userId, weekStart, p.calorieGoal, p.allergies);
+};
 
 const itemInput = body({ date, meal: mealType, foodId: uuid, quantity: quantity.default(1) });
 const itemPatch = body({ date: date.optional(), meal: mealType.optional(), foodId: uuid.optional(), quantity: quantity.optional(), position: z.int().min(0).optional() }).refine(

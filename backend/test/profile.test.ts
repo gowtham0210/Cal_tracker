@@ -13,7 +13,7 @@ describe("/me/profile", () => {
     const created = await api("PUT", "/me/profile", { token: u.token, body: PROFILE });
     assert.equal(created.status, 201);
     const { updatedAt, ...rest } = created.body;
-    assert.deepEqual(rest, PROFILE);
+    assert.deepEqual(rest, { ...PROFILE, dietType: "non-veg", allergies: [], budget: "medium", dailyBudget: null });
     assert.equal((await api("PUT", "/me/profile", { token: u.token, body: { ...PROFILE, heightCm: 176 } })).status, 200);
   });
 

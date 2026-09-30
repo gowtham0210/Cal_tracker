@@ -11,6 +11,7 @@ import { api, ApiError } from "@/lib/api";
 import { downloadFile, type ExportKind } from "@/lib/csv";
 import { useStore } from "@/lib/store";
 import { CUISINE_LABEL, type Cuisine, type Theme, type UnitSystem } from "@/lib/types";
+import { FoodPreferences } from "./food-preferences";
 
 /** Number input that commits on blur/Enter and reverts invalid values. */
 function NumberSetting({
@@ -220,6 +221,8 @@ export function SettingsView() {
             </div>
           </div>
         </Card>
+
+        <FoodPreferences />
 
         <Card>
           <CardHeader title="Daily targets" />

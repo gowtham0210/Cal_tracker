@@ -14,6 +14,6 @@ const listQuery = z.object({
 
 library.get("/", (req, res) => {
   const q = parse(listQuery, req.query);
-  const cuisine = getProfile(res.locals.userId)?.cuisine ?? "tamil-nadu";
-  res.json({ data: listLibrary(res.locals.userId, { ...q, cuisine }) });
+  const p = getProfile(res.locals.userId);
+  res.json({ data: listLibrary(res.locals.userId, { ...q, cuisine: p?.cuisine ?? "tamil-nadu", allergies: p?.allergies ?? [] }) });
 });

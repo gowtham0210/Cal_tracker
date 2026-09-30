@@ -274,13 +274,15 @@ paths:
       tags: [Profile]
       operationId: replaceProfile
       summary: Create or replace the profile
-      description: Used when onboarding. Setting `startWeight` also records a weigh-in on `startDate`.
+      description: |
+        Used when onboarding. Setting `startWeight` also records a weigh-in on `startDate`. Food
+        preferences may be left out, which keeps what's saved.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/Profile"
+              $ref: "#/components/schemas/ProfileInput"
       responses:
         "200":
           description: Profile replaced.
@@ -1740,7 +1742,7 @@ components:
       type: object
       additionalProperties: false
       required:
-        [heightCm, startWeight, goalWeight, startDate, calorieGoal, macroGoals, trackMacros, waterGoal, glassMl, units, theme, timeZone, cuisine]
+        [heightCm, startWeight, goalWeight, startDate, calorieGoal, macroGoals, trackMacros, waterGoal, glassMl, units, theme, timeZone, cuisine, dietType, allergies, budget, dailyBudget]
       properties:
         heightCm:
           type: number
@@ -1787,6 +1789,40 @@ components:
           examples: [Asia/Kolkata]
         cuisine:
           $ref: "#/components/schemas/Cuisine"
+        dietType:
+          $ref: "#/components/schemas/DietType"
+          default: non-veg
+          description: |
+            How the user eats; shapes planner suggestions. `non-veg` rules nothing out.
+            Food preferences (`dietType`, `allergies`, `budget`, `dailyBudget`) are optional on PUT
+            (see ProfileInput): leaving them out keeps what's saved, or these defaults.
+        allergies:
+          type: array
+          maxItems: 20
+          default: []
+          items:
+            type: string
+            minLength: 1
+            maxLength: 40
+            pattern: "\\S"
+          description: |
+            Foods the user must avoid, as hard rules. Standard allergens are `peanut`, `tree nut`,
+            `dairy`, `egg`, `gluten`, `soy`, `fish`, `shellfish` and `sesame`; anything else (e.g.
+            `brinjal`) is matched against food names. Stored lower-case without repeats, with common
+            names mapped to the standard ones (`peanuts` and `groundnut` become `peanut`, `milk`
+            becomes `dairy`).
+          examples: [[peanut, brinjal]]
+        budget:
+          type: string
+          enum: [low, medium, high]
+          default: medium
+          description: How much the user likes to spend on food. A hint for suggestions, not a cost calculation.
+        dailyBudget:
+          type: [integer, "null"]
+          minimum: 1
+          maximum: 100000
+          default: null
+          description: A daily food budget in rupees. When set, it is used instead of `budget`.
         updatedAt:
           $ref: "#/components/schemas/Timestamp"
           readOnly: true
@@ -1804,6 +1840,52 @@ components:
           theme: system
           timeZone: Asia/Kolkata
           cuisine: tamil-nadu
+          dietType: eggetarian
+          allergies: [peanut]
+          budget: medium
+          dailyBudget: null
+    ProfileInput:
+      type: object
+      additionalProperties: false
+      description: A whole profile for PUT. Like Profile, but food preferences are optional.
+      required: [heightCm, startWeight, goalWeight, startDate, calorieGoal, macroGoals, trackMacros, waterGoal, glassMl, units, theme, timeZone, cuisine]
+      properties:
+        heightCm:
+          $ref: "#/components/schemas/Profile/properties/heightCm"
+        startWeight:
+          $ref: "#/components/schemas/Profile/properties/startWeight"
+        goalWeight:
+          $ref: "#/components/schemas/Profile/properties/goalWeight"
+        startDate:
+          $ref: "#/components/schemas/Profile/properties/startDate"
+        calorieGoal:
+          $ref: "#/components/schemas/Profile/properties/calorieGoal"
+        macroGoals:
+          $ref: "#/components/schemas/Profile/properties/macroGoals"
+        trackMacros:
+          $ref: "#/components/schemas/Profile/properties/trackMacros"
+        waterGoal:
+          $ref: "#/components/schemas/Profile/properties/waterGoal"
+        glassMl:
+          $ref: "#/components/schemas/Profile/properties/glassMl"
+        units:
+          $ref: "#/components/schemas/Profile/properties/units"
+        theme:
+          $ref: "#/components/schemas/Profile/properties/theme"
+        timeZone:
+          $ref: "#/components/schemas/Profile/properties/timeZone"
+        cuisine:
+          $ref: "#/components/schemas/Profile/properties/cuisine"
+        dietType:
+          $ref: "#/components/schemas/Profile/properties/dietType"
+        allergies:
+          $ref: "#/components/schemas/Profile/properties/allergies"
+        budget:
+          $ref: "#/components/schemas/Profile/properties/budget"
+        dailyBudget:
+          $ref: "#/components/schemas/Profile/properties/dailyBudget"
+        updatedAt:
+          $ref: "#/components/schemas/Profile/properties/updatedAt"
     Cuisine:
       type: string
       enum: [tamil-nadu, south-indian, north-indian, any]
@@ -1851,6 +1933,14 @@ components:
           $ref: "#/components/schemas/Profile/properties/timeZone"
         cuisine:
           $ref: "#/components/schemas/Cuisine"
+        dietType:
+          $ref: "#/components/schemas/DietType"
+        allergies:
+          $ref: "#/components/schemas/Profile/properties/allergies"
+        budget:
+          $ref: "#/components/schemas/Profile/properties/budget"
+        dailyBudget:
+          $ref: "#/components/schemas/Profile/properties/dailyBudget"
 
     # ---------- Food
     FoodSource:
@@ -2422,7 +2512,7 @@ components:
     LibraryFood:
       type: object
       additionalProperties: false
-      required: [id, name, meal, serving, calories, protein, carbs, fat, source, confidence, cuisine, diet, allergens, useCount]
+      required: [id, name, meal, serving, calories, protein, carbs, fat, source, confidence, cuisine, diet, allergens, allergyConflicts, useCount]
       properties:
         id:
           $ref: "#/components/schemas/Id"
@@ -2470,7 +2560,18 @@ components:
           type: array
           items:
             type: string
-          description: Known allergens, e.g. peanut, dairy, gluten.
+          description: |
+            Known allergens, e.g. peanut, dairy, gluten. Curated and AI foods come with them; for
+            logged foods and favorites they (and `diet`) are detected from the name.
+        allergyConflicts:
+          type: array
+          readOnly: true
+          items:
+            type: string
+          description: |
+            Which of the user's `allergies` this food conflicts with: a standard allergen it has, or
+            a custom allergy that appears in its name. Empty when it's safe.
+          examples: [[peanut]]
         useCount:
           type: integer
           minimum: 0

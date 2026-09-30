@@ -1,7 +1,7 @@
 "use client";
 
 import clsx from "clsx";
-import { ArrowRightLeft, Copy, Minus, MoveRight, Plus, Trash2 } from "lucide-react";
+import { ArrowRightLeft, Copy, Minus, MoveRight, Plus, Trash2, TriangleAlert } from "lucide-react";
 import { useState } from "react";
 import { Button, Sheet } from "@/components/ui";
 import type { PlanItem } from "@/lib/api";
@@ -11,6 +11,7 @@ import { useStore } from "@/lib/store";
 import type { MealType } from "@/lib/types";
 import { MEAL_LABEL } from "@/lib/ui";
 import { longDay, shortDay } from "@/lib/week";
+import { allergyText } from "./allergy-warning";
 import { SlotPicker } from "./slot-picker";
 import { useUndoable } from "./use-undoable";
 
@@ -34,6 +35,7 @@ export function ItemSheet({ item, onClose, onSwap }: { item: PlanItem | null; on
   if (!item || !weekStart) return <Sheet open={false} onClose={close} title="">{null}</Sheet>;
 
   const n = itemNutrition(item.food, item.quantity);
+  const warning = allergyText(item.food);
   const set = (q: number) => clamp(q) !== item.quantity && updateItem(item.id, { quantity: clamp(q) });
   const where = (d: string, m: MealType) => `${shortDay(d)} ${MEAL_LABEL[m].toLowerCase()}`;
 
@@ -90,6 +92,12 @@ export function ItemSheet({ item, onClose, onSwap }: { item: PlanItem | null; on
       }
     >
       <div className="space-y-5">
+        {warning && (
+          <p className="flex items-center gap-2 rounded-xl bg-amber-100 px-3 py-2.5 text-sm font-medium text-amber-800 dark:bg-amber-400/15 dark:text-amber-300">
+            <TriangleAlert className="size-4 shrink-0" aria-hidden />
+            {warning}, which is on your allergy list.
+          </p>
+        )}
         <div>
           <p id="portion-label" className="text-sm font-medium">
             Portion

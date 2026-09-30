@@ -4,6 +4,7 @@ import { z } from "zod";
 import { db } from "../db/index.js";
 import { named } from "../db/named.js";
 import { iso } from "../lib/dates.js";
+import { normalizeAllergies } from "../lib/food-tags.js";
 import { HttpError } from "../http/problem.js";
 import { body, date, grams, parse, timeZone } from "../http/validate.js";
 
@@ -23,11 +24,19 @@ export interface ProfileRow {
   theme: "system" | "light" | "dark";
   time_zone: string;
   cuisine: Cuisine;
+  diet_type: DietType;
+  allergies: string;
+  budget: Budget;
+  daily_budget: number | null;
   updated_at: number;
 }
 
 export const CUISINES = ["tamil-nadu", "south-indian", "north-indian", "any"] as const;
 export type Cuisine = (typeof CUISINES)[number];
+export const DIET_TYPES = ["veg", "eggetarian", "non-veg"] as const;
+export type DietType = (typeof DIET_TYPES)[number];
+export const BUDGETS = ["low", "medium", "high"] as const;
+export type Budget = (typeof BUDGETS)[number];
 
 export interface Profile {
   heightCm: number;
@@ -43,6 +52,12 @@ export interface Profile {
   theme: "system" | "light" | "dark";
   timeZone: string;
   cuisine: Cuisine;
+  dietType: DietType;
+  /** Standard allergens (see lib/food-tags) and the user's own, lower-case. */
+  allergies: string[];
+  budget: Budget;
+  /** Rupees per day; used instead of `budget` when set. */
+  dailyBudget: number | null;
   updatedAt: string;
 }
 
@@ -74,6 +89,10 @@ export function getProfile(userId: string): Profile | undefined {
     theme: r.theme,
     timeZone: r.time_zone,
     cuisine: r.cuisine,
+    dietType: r.diet_type,
+    allergies: JSON.parse(r.allergies) as string[],
+    budget: r.budget,
+    dailyBudget: r.daily_budget,
     updatedAt: iso(r.updated_at),
   };
 }
@@ -101,31 +120,49 @@ const fields = {
   timeZone,
   cuisine: z.enum(CUISINES, "Must be tamil-nadu, south-indian, north-indian or any."),
 };
-const profileInput = body({ ...fields, updatedAt: z.unknown().optional() });
+// Food preferences are optional on PUT: leaving them out keeps what's saved (or the defaults).
+const preferences = {
+  dietType: z.enum(DIET_TYPES, "Must be veg, eggetarian or non-veg."),
+  allergies: z
+    .array(z.string("Must be text.").trim().min(1, "Must not be empty.").max(40, "Must be at most 40 characters."), "Must be a list.")
+    .max(20, "At most 20 allergies.")
+    .transform(normalizeAllergies),
+  budget: z.enum(BUDGETS, "Must be low, medium or high."),
+  dailyBudget: z.int("Must be a whole number.").min(1, "Must be 1 to 100000.").max(100_000, "Must be 1 to 100000.").nullable(),
+};
+const optional = <T extends z.ZodRawShape>(shape: T) => Object.fromEntries(Object.entries(shape).map(([k, v]) => [k, (v as z.ZodType).optional()])) as unknown as { [K in keyof T]: z.ZodOptional<T[K]> };
+const profileInput = body({ ...fields, ...optional(preferences), updatedAt: z.unknown().optional() });
 const profilePatch = body({
-  ...Object.fromEntries(Object.entries(fields).map(([k, v]) => [k, v.optional()])),
+  ...optional(fields),
+  ...optional(preferences),
   macroGoals: body({ protein: grams.optional(), carbs: grams.optional(), fat: grams.optional() })
     .refine((m) => Object.keys(m).length > 0, "Send at least one of protein, carbs or fat.")
     .optional(),
 }).refine((v) => Object.keys(v).length > 0, "Send at least one field.");
 
-type ProfileInput = Omit<Profile, "updatedAt">;
+type Preferences = Pick<Profile, "dietType" | "allergies" | "budget" | "dailyBudget">;
+type ProfileInput = Omit<Profile, "updatedAt" | keyof Preferences> & Partial<Preferences>;
+const DEFAULT_PREFERENCES: Preferences = { dietType: "non-veg", allergies: [], budget: "medium", dailyBudget: null };
 
 const writeProfile = named(
   `INSERT INTO profiles (user_id, height_cm, goal_weight, start_date, calorie_goal, protein_goal, carbs_goal, fat_goal,
-                         track_macros, water_goal, glass_ml, units, theme, time_zone, cuisine)
+                         track_macros, water_goal, glass_ml, units, theme, time_zone, cuisine, diet_type, allergies, budget, daily_budget)
    VALUES (@userId, @heightCm, @goalWeight, @startDate, @calorieGoal, @protein, @carbs, @fat,
-           @trackMacros, @waterGoal, @glassMl, @units, @theme, @timeZone, @cuisine)
+           @trackMacros, @waterGoal, @glassMl, @units, @theme, @timeZone, @cuisine, @dietType, @allergies, @budget, @dailyBudget)
    ON CONFLICT (user_id) DO UPDATE SET
      height_cm = excluded.height_cm, goal_weight = excluded.goal_weight, start_date = excluded.start_date,
      calorie_goal = excluded.calorie_goal, protein_goal = excluded.protein_goal, carbs_goal = excluded.carbs_goal,
      fat_goal = excluded.fat_goal, track_macros = excluded.track_macros, water_goal = excluded.water_goal,
      glass_ml = excluded.glass_ml, units = excluded.units, theme = excluded.theme, time_zone = excluded.time_zone,
-     cuisine = excluded.cuisine`,
+     cuisine = excluded.cuisine, diet_type = excluded.diet_type, allergies = excluded.allergies, budget = excluded.budget,
+     daily_budget = excluded.daily_budget`,
 );
 
-/** Writes the whole profile and its start weigh-in in one transaction. */
-export const saveProfile = db.transaction((userId: string, p: ProfileInput) => {
+/** Writes the whole profile and its start weigh-in in one transaction. Food preferences left out are kept. */
+export const saveProfile = db.transaction((userId: string, input: ProfileInput) => {
+  const saved = getProfile(userId);
+  const kept: Preferences = saved ? { dietType: saved.dietType, allergies: saved.allergies, budget: saved.budget, dailyBudget: saved.dailyBudget } : DEFAULT_PREFERENCES;
+  const p = { ...kept, ...input };
   writeProfile.run({
     userId,
     ...p,
@@ -133,6 +170,7 @@ export const saveProfile = db.transaction((userId: string, p: ProfileInput) => {
     carbs: p.macroGoals.carbs,
     fat: p.macroGoals.fat,
     trackMacros: p.trackMacros ? 1 : 0,
+    allergies: JSON.stringify(p.allergies),
   });
   upsertWeight.run(randomUUID(), userId, p.startDate, p.startWeight);
 });

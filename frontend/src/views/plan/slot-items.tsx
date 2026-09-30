@@ -8,20 +8,22 @@ import { formatQuantity } from "@/lib/plan-math";
 import type { MealType } from "@/lib/types";
 import { MEAL_LABEL } from "@/lib/ui";
 import { longDay } from "@/lib/week";
+import { AllergyWarning, allergyText } from "./allergy-warning";
 import { usePlanItemDrag, useSlotDrop } from "./plan-dnd";
 
 function PlannedFood({ item: i, onOpen, compact }: { item: PlanItem; onOpen: (item: PlanItem) => void; compact?: boolean }) {
   const { ref, props, isDragging } = usePlanItemDrag(i);
+  const warning = allergyText(i.food);
   return (
     <button
       ref={ref}
       type="button"
       {...props}
       onClick={() => onOpen(i)}
-      aria-label={`${i.food.name}, ${formatQuantity(i.quantity)} × ${i.food.serving}, ${Math.round(i.calories)} kcal. Change portion`}
+      aria-label={`${i.food.name}, ${formatQuantity(i.quantity)} × ${i.food.serving}, ${Math.round(i.calories)} kcal. ${warning ? `${warning}. ` : ""}Change portion`}
       className={clsx(
         "w-full cursor-grab touch-manipulation select-none rounded-lg [-webkit-touch-callout:none] border border-border bg-surface text-left transition hover:border-brand/60",
-        compact ? "px-2 py-1.5" : "flex items-center gap-3 px-3 py-2.5",
+        compact ? "px-2 py-1.5" : "flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2.5",
         i.id.startsWith("tmp-") && "opacity-70",
         isDragging && "outline-2 outline-dashed outline-brand",
       )}
@@ -31,6 +33,7 @@ function PlannedFood({ item: i, onOpen, compact }: { item: PlanItem; onOpen: (it
         {formatQuantity(i.quantity)} × {compact ? "" : `${i.food.serving} · `}
         {Math.round(i.calories)} kcal
       </span>
+      <AllergyWarning food={i.food} compact={compact} className={compact ? "mt-0.5" : "basis-full"} />
     </button>
   );
 }
