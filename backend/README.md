@@ -24,6 +24,7 @@ node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
 | `PORT` | `4000` | |
 | `DB_PATH` | `./data/lighter.db` | SQLite file; delete `data/` to reset locally |
 | `CORS_ORIGIN` | `http://localhost:3000` | The frontend's origin |
+| `TRUST_PROXY` | `loopback` | Proxies trusted for the client IP (Express `trust proxy`); `uniquelocal` behind nginx on a Docker network |
 | `JWT_SECRET` | — | Required, at least 32 characters |
 | `ACCESS_TOKEN_TTL` | `604800` | Seconds (7 days); there are no refresh tokens yet |
 | `AZURE_OPENAI_ENDPOINT` | — | e.g. `https://<resource>.openai.azure.com` |

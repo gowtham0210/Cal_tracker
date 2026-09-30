@@ -20,7 +20,7 @@ import { profile } from "./routes/profile.js";
 
 export function createApp() {
   const app = express();
-  app.set("trust proxy", "loopback");
+  app.set("trust proxy", config.trustProxy);
   app.use(cors({ origin: config.corsOrigin, exposedHeaders: ["Location", "Retry-After", "Content-Disposition"] }));
   app.use(express.json({ limit: "100kb", type: ["application/json", "application/merge-patch+json"] }));
 
