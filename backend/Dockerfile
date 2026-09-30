@@ -1,5 +1,7 @@
 # Production image for the API. The SQLite database lives on a volume at /data.
 FROM node:24-bookworm-slim AS build
+# better-sqlite3 compiles from source when no prebuilt binary matches this Node version.
+RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
