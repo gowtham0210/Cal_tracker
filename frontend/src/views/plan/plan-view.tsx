@@ -17,6 +17,7 @@ import { DraftBanner } from "./draft-banner";
 import { FoodLibrary } from "./food-library";
 import { GenerateSheet } from "./generate-sheet";
 import { ItemSheet } from "./item-sheet";
+import { SwapSheet } from "./swap-sheet";
 import { DraggableFood, PlanDnd } from "./plan-dnd";
 import { useUndoable } from "./use-undoable";
 import { WeekGrid } from "./week-grid";
@@ -99,6 +100,7 @@ export function PlanView() {
   const [librarySheet, setLibrarySheet] = useState(false);
   const [copyFrom, setCopyFrom] = useState<string | null>(null);
   const [generateOpen, setGenerateOpen] = useState(false);
+  const [swapFor, setSwapFor] = useState<string | null>(null);
   const undoable = useUndoable();
   const setDayItems = usePlan((s) => s.setDay);
   const wide = useMediaQuery("(min-width: 1024px)");
@@ -203,9 +205,10 @@ export function PlanView() {
           <FoodLibrary className="h-[60dvh]" />
         </Sheet>
         <AddFoodSheet target={addTo} onClose={() => setAddTo(null)} />
-        <ItemSheet item={portionItem} onClose={() => setPortionFor(null)} />
+        <ItemSheet item={portionItem} onClose={() => setPortionFor(null)} onSwap={(i) => setSwapFor(i.id)} />
+        <SwapSheet item={plan?.items.find((i) => i.id === swapFor) ?? null} onClose={() => setSwapFor(null)} />
         <CopyDaySheet from={copyFrom} onClose={() => setCopyFrom(null)} />
-      <GenerateSheet open={generateOpen} onClose={() => setGenerateOpen(false)} defaultDay={day} />
+        <GenerateSheet open={generateOpen} onClose={() => setGenerateOpen(false)} defaultDay={day} />
       </div>
     </PlanDnd>
   );

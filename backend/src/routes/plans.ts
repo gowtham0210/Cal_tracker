@@ -2,6 +2,7 @@ import { Router, type Request } from "express";
 import { z } from "zod";
 import { addItem, buildPlan, checkInWeek, copyDay, copyItem, removeItem, setDay, updateItem, weekDates } from "../lib/plan.js";
 import { discardDraft, fillDraft, keepDraft, prepareDraft } from "../lib/plan-generate.js";
+import { swapOptions } from "../lib/plan-swap.js";
 import { body, date, mealType, parse, uuid } from "../http/validate.js";
 import { HttpError, type Problem } from "../http/problem.js";
 import { aiRateLimit } from "./coach.js";
@@ -66,6 +67,21 @@ const copyDayInput = body({
     .max(6)
     .refine((d) => new Set(d).size === d.length, "Each day once."),
   mode: z.enum(["replace", "add"], "Must be replace or add."),
+});
+
+// The ranking alone never costs an AI call, so going over the AI limit only turns the AI off.
+plans.get("/:weekStart/items/:itemId/swaps", async (req, res) => {
+  const weekStart = weekParam(req);
+  const aiAllowed = () => {
+    try {
+      aiRateLimit(req, res, () => {});
+      return true;
+    } catch {
+      res.removeHeader("Retry-After");
+      return false;
+    }
+  };
+  res.json(await swapOptions(res.locals.userId, requireProfile(res.locals.userId), weekStart, itemParam(req), aiAllowed));
 });
 
 plans.post("/:weekStart/items/:itemId/copy", (req, res) => {

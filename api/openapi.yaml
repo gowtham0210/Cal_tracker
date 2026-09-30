@@ -1277,6 +1277,44 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /meal-plans/{weekStart}/items/{itemId}/swaps:
+    parameters:
+      - $ref: "#/components/parameters/weekStart"
+      - $ref: "#/components/parameters/itemId"
+    get:
+      tags: [Planner]
+      operationId: listPlanItemSwaps
+      summary: Similar foods to swap a planned food for
+      description: |
+        3 to 5 library foods that fit the user's diet type and avoid their allergies, each portioned
+        (in quarter servings) to within ±10% of the planned food's calories, with a short reason.
+        The server ranks them by similarity (same meal, food style, the user's own foods, protein);
+        when the AI is available it picks and explains the most similar from that shortlist
+        (`source: ai`), otherwise the ranking is used (`source: rules`). Apply one by patching the
+        item's `foodId` and `quantity`.
+      responses:
+        "200":
+          description: The alternatives, most similar first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [source, data]
+                properties:
+                  source:
+                    type: string
+                    enum: [ai, rules]
+                  data:
+                    type: array
+                    maxItems: 5
+                    items:
+                      $ref: "#/components/schemas/PlanSwap"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
   /meal-plans/{weekStart}/items/{itemId}/copy:
     parameters:
       - $ref: "#/components/parameters/weekStart"
@@ -2795,6 +2833,32 @@ components:
               $ref: "#/components/schemas/Nutrition"
             dinner:
               $ref: "#/components/schemas/Nutrition"
+    PlanSwap:
+      type: object
+      additionalProperties: false
+      required: [food, quantity, calories, protein, calorieDifference, proteinDifference, reason]
+      properties:
+        food:
+          $ref: "#/components/schemas/LibraryFood"
+        quantity:
+          type: number
+          minimum: 0.25
+          maximum: 10
+          description: Servings, chosen to match the planned food's calories.
+        calories:
+          $ref: "#/components/schemas/Kcal"
+        protein:
+          $ref: "#/components/schemas/Grams"
+        calorieDifference:
+          type: integer
+          description: Calories compared with the planned food (negative is fewer).
+        proteinDifference:
+          type: number
+          description: Grams of protein compared with the planned food.
+        reason:
+          type: string
+          maxLength: 60
+          examples: [Same sambar, with ragi instead of rice]
     MealPlan:
       type: object
       required: [weekStart, status, source, calorieGoal, toleranceKcal, items, days, week]

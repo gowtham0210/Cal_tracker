@@ -38,7 +38,7 @@ export function isSafe(r: LibraryRow, p: Pick<Profile, "dietType" | "allergies">
   return allergyConflicts({ name: r.name, allergens: JSON.parse(r.allergens) as string[], ingredients: ingredientNames(r) }, p.allergies).length === 0;
 }
 
-const isYours = (r: LibraryRow) => r.use_count > 0 || r.source === "logged" || r.source === "favorite";
+export const isYours = (r: LibraryRow) => r.use_count > 0 || r.source === "logged" || r.source === "favorite";
 const PER_MEAL = { yours: 10, others: 6, topUp: 4 };
 
 /**
@@ -61,7 +61,8 @@ export function candidates(userId: string, p: Profile, mode: Mode): LibraryRow[]
 
 /* ---------------- Portions ---------------- */
 
-const snap = (q: number, min = 0.25, max = 10) => Math.min(max, Math.max(min, Math.round(q * 4) / 4));
+/** Rounds servings to a quarter, within limits. */
+export const snap = (q: number, min = 0.25, max = 10) => Math.min(max, Math.max(min, Math.round(q * 4) / 4));
 const total = (items: Planned[]) => items.reduce((s, i) => s + i.food.calories * i.quantity, 0);
 
 /**

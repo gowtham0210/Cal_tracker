@@ -298,6 +298,16 @@ const enc = encodeURIComponent;
 
 /* ---------------- Operations ---------------- */
 
+export interface PlanSwap {
+  food: LibraryFood;
+  quantity: number;
+  calories: number;
+  protein: number;
+  calorieDifference: number;
+  proteinDifference: number;
+  reason: string;
+}
+
 export interface GenerateRequest {
   scope: "week" | "day";
   date?: string;
@@ -419,6 +429,7 @@ export const api = {
       if (event === "day") onDay(p.date, p.plan);
     }, "Planning was interrupted. Please try again.");
   },
+  planSwaps: (weekStart: string, id: string) => json<{ source: "ai" | "rules"; data: PlanSwap[] }>("GET", `/meal-plans/${weekStart}/items/${enc(id)}/swaps`),
   keepPlanDraft: (weekStart: string) => json<MealPlan>("POST", `/meal-plans/${weekStart}/draft/keep`),
   discardPlanDraft: (weekStart: string) => json<MealPlan>("POST", `/meal-plans/${weekStart}/draft/discard`),
 

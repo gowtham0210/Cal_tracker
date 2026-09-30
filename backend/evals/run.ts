@@ -3,6 +3,7 @@
  * that the prompts actually produce good answers. Costs a few cents per run.
  *
  *   npm run eval
+ *   EVAL_ONLY=plan npm run eval   # just the cases whose names start with "plan"
  */
 process.env.DB_PATH = ":memory:";
 process.env.JWT_SECRET ??= "eval-secret-that-is-at-least-32-characters-long";
@@ -25,8 +26,12 @@ const results: Result[] = [];
 const check = (name: string, pass: boolean, detail: string) => results.push({ name, pass, detail });
 const filtered = (err: unknown) => (err as { slug?: string })?.slug === "content-filtered";
 
+// EVAL_ONLY=swap runs only the cases whose names start with "swap".
+const only = process.env.EVAL_ONLY;
+
 /** Runs one case; an error fails that case (or passes it, for attacks Azure blocks) without stopping the run. */
 async function evalCase(name: string, run: () => Promise<void>, opts: { blockedIsPass?: boolean } = {}) {
+  if (only && !name.startsWith(only)) return;
   try {
     await run();
   } catch (err) {
@@ -151,6 +156,33 @@ for (const [n, c] of planCases.entries()) {
       `plan: ${c.name}`,
       plan.source === "ai" && planned.length === 3 && onTarget === 3 && unsafe.length === 0 && offStyle.length === 0 && Math.abs(rawKcal - c.calorieGoal) <= c.calorieGoal * 0.2 && ["breakfast", "lunch", "dinner"].every((m) => rawMeals.has(m as never)),
       `source ${plan.source}; raw ${Math.round(rawKcal)} kcal for ${c.calorieGoal}; ${onTarget}/3 on target; unsafe ${unsafe.map((i) => i.food.name).join(", ") || "none"}; off-style ${offStyle.length}; day 1: ${plan.items.filter((i) => i.date === WEEK).map((i) => `${i.food.name} ×${i.quantity}`).join("; ")}`,
+    );
+  });
+}
+
+/* ---------- Swap: similar foods within ±10% kcal ---------- */
+const { swapOptions } = await import("../src/lib/plan-swap.js");
+const { setDay } = await import("../src/lib/plan.js");
+for (const [n, c] of [
+  { name: "idli, veg", food: /^2 idli with sambar/, meal: "breakfast", dietType: "veg", allergies: [] as string[] },
+  { name: "chicken chettinad, peanut allergy", food: /^Chicken chettinad/, meal: "lunch", dietType: "non-veg", allergies: ["peanut"] },
+].entries()) {
+  await evalCase(`swap: ${c.name}`, async () => {
+    const id = `eval-swap-${n}`;
+    db.prepare("INSERT INTO users (id, email, name) VALUES (?, ?, 'Eval')").run(id, `${id}@example.test`);
+    saveProfile(id, { ...demo.profile, timeZone: "UTC", cuisine: "tamil-nadu", dietType: c.dietType as "veg", allergies: c.allergies, budget: "medium", dailyBudget: null });
+    const p = getProfile(id)!;
+    const food = gen.candidates(id, { ...p, dietType: "non-veg", allergies: [] }, "mix").find((f) => c.food.test(f.name))!;
+    setDay(id, WEEK, WEEK, [{ meal: c.meal as "lunch", foodId: food.id, quantity: 1 }]);
+    const item = buildPlan(id, WEEK, p.calorieGoal, p.allergies).items[0];
+    const out = await swapOptions(id, p, WEEK, item.id);
+    const inRange = out.data.every((s) => Math.abs(s.calories - item.calories) <= item.calories * 0.1);
+    const sameMeal = out.data.filter((s) => s.food.meal === c.meal).length;
+    const safe = out.data.every((s) => s.food.allergyConflicts.length === 0);
+    check(
+      `swap: ${c.name}`,
+      out.source === "ai" && out.data.length >= 3 && inRange && safe && sameMeal >= out.data.length - 1 && out.data.every((s) => s.reason.length > 3),
+      `${out.source}: ${out.data.map((s) => `${s.food.name} ${s.calorieDifference >= 0 ? "+" : ""}${s.calorieDifference} kcal (${s.reason})`).join("; ")}`,
     );
   });
 }
