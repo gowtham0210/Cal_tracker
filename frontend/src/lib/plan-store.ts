@@ -35,6 +35,8 @@ interface PlanState {
   setDay: (date: string, items: PlanItem[]) => void;
   copyDay: (from: string, to: string[], mode: "replace" | "add") => void;
 
+  /** Takes a plan saved elsewhere (e.g. after logging from the dashboard) if it's the week on screen and nothing is saving. */
+  adopt: (plan: MealPlan) => void;
   generate: (req: GenerateRequest) => Promise<void>;
   keepDraft: () => Promise<void>;
   discardDraft: () => Promise<void>;
@@ -120,7 +122,7 @@ export const usePlan = create<PlanState>()((set, get) => {
       const id = tmp();
       const before = new Set(get().plan?.items.map((i) => i.id));
       const saved = mutate(
-        (items) => [...items, { id, date, meal, quantity, position: 9999, food, calories: 0, protein: 0, carbs: 0, fat: 0 }],
+        (items) => [...items, { id, date, meal, quantity, position: 9999, food, calories: 0, protein: 0, carbs: 0, fat: 0, logged: false }],
         (week) => api.addPlanItem(week, { date, meal, foodId: food.id, quantity }),
       );
       // The new item is the one the server returns that wasn't there before.
@@ -154,7 +156,7 @@ export const usePlan = create<PlanState>()((set, get) => {
       void mutate(
         (items) => {
           const src = items.find((i) => i.id === id);
-          return src ? [...items, { ...src, id: tmp(), ...to, position: 9999 }] : items;
+          return src ? [...items, { ...src, id: tmp(), ...to, position: 9999, logged: false }] : items;
         },
         async (week) => api.copyPlanItem(week, await resolveId(id), to),
       ).catch(() => {});
@@ -162,7 +164,7 @@ export const usePlan = create<PlanState>()((set, get) => {
 
     setDay: (date, dayItems) => {
       void mutate(
-        (items) => [...items.filter((i) => i.date !== date), ...dayItems.map((i, n) => ({ ...i, id: tmp(), date, position: n }))],
+        (items) => [...items.filter((i) => i.date !== date), ...dayItems.map((i, n) => ({ ...i, id: tmp(), date, position: n, logged: false }))],
         (week) => api.setPlanDay(week, date, dayItems.map((i) => ({ meal: i.meal, foodId: i.food.id, quantity: i.quantity }))),
       ).catch(() => {});
     },
@@ -172,12 +174,15 @@ export const usePlan = create<PlanState>()((set, get) => {
         (items) => {
           const source = items.filter((i) => i.date === from);
           const kept = mode === "replace" ? items.filter((i) => !to.includes(i.date)) : items;
-          return [...kept, ...to.flatMap((date) => source.map((i) => ({ ...i, id: tmp(), date, position: 9999 + i.position })))];
+          return [...kept, ...to.flatMap((date) => source.map((i) => ({ ...i, id: tmp(), date, position: 9999 + i.position, logged: false })))];
         },
         (week) => api.copyPlanDay(week, from, to, mode),
       ).catch(() => {});
     },
 
+    adopt: (plan) => {
+      if (get().weekStart === plan.weekStart && get().pending === 0) set({ plan });
+    },
     generate: async (req) => {
       const { weekStart } = get();
       if (!weekStart) return;

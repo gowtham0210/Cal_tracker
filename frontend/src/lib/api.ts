@@ -60,7 +60,7 @@ export interface ApiFoodEntry {
   protein: number;
   carbs: number;
   fat: number;
-  source: "manual" | "ai-text" | "ai-photo" | "favorite";
+  source: "manual" | "ai-text" | "ai-photo" | "favorite" | "plan";
   favoriteId: string | null;
   createdAt: string;
 }
@@ -169,6 +169,8 @@ export interface PlanItem extends Nutrition {
   quantity: number;
   position: number;
   food: LibraryFood;
+  /** Logged to the food log from the plan. */
+  logged: boolean;
 }
 
 export interface PlanDay extends Nutrition {
@@ -452,6 +454,8 @@ export const api = {
     }, "Planning was interrupted. Please try again.");
   },
   planSwaps: (weekStart: string, id: string) => json<{ source: "ai" | "rules"; data: PlanSwap[] }>("GET", `/meal-plans/${weekStart}/items/${enc(id)}/swaps`),
+  logPlannedMeal: (weekStart: string, date: string, meal: MealType) =>
+    json<{ entries: ApiFoodEntry[]; plan: MealPlan }>("POST", `/meal-plans/${weekStart}/days/${date}/meals/${meal}/log`),
   keepPlanDraft: (weekStart: string) => json<MealPlan>("POST", `/meal-plans/${weekStart}/draft/keep`),
   discardPlanDraft: (weekStart: string) => json<MealPlan>("POST", `/meal-plans/${weekStart}/draft/discard`),
 

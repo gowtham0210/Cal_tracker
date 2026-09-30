@@ -12,7 +12,7 @@ export interface FoodEntry extends Macros {
   meal: MealType;
   name: string;
   calories: number;
-  source?: "manual" | "ai-text" | "ai-photo" | "favorite";
+  source?: "manual" | "ai-text" | "ai-photo" | "favorite" | "plan";
   favoriteId?: string | null;
   createdAt: number;
 }

@@ -35,6 +35,8 @@ interface State extends Data {
   clearAll: () => Promise<void>;
 
   addFood: (f: Omit<FoodEntry, "id" | "createdAt">) => FoodEntry;
+  /** Adds entries the server already created (e.g. logged from a plan). */
+  addSavedFoods: (entries: ApiFoodEntry[]) => void;
   updateFood: (id: string, patch: Partial<FoodEntry>) => void;
   removeFood: (id: string) => void;
   restoreFood: (f: FoodEntry) => void;
@@ -222,6 +224,7 @@ export const useStore = create<State>()((set, get) => {
 
     /* ---------- Food ---------- */
 
+    addSavedFoods: (entries) => set((s) => ({ foods: [...s.foods, ...entries.map(toFood)] })),
     addFood: (f) => {
       const entry: FoodEntry = { ...f, id: tempId(), createdAt: Date.now() };
       const saved = (async () => {

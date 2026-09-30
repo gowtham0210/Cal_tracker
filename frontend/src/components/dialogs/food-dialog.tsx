@@ -1,13 +1,15 @@
 "use client";
 
 import clsx from "clsx";
-import { Camera, Check, ImagePlus, PenLine, Sparkles, Star, Trash2, Wand2 } from "lucide-react";
+import { Camera, Check, ClipboardList, ImagePlus, PenLine, Sparkles, Star, Trash2, Wand2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { aiEstimatePhoto, aiParseFood } from "@/lib/ai";
 import { ApiError } from "@/lib/api";
 import { todayKey } from "@/lib/date";
 import type { ParsedFood } from "@/lib/foods";
 import { useStore } from "@/lib/store";
+import { formatQuantity } from "@/lib/plan-math";
+import { loggedMessage, usePlannedDay } from "@/lib/use-planned-day";
 import type { MealType } from "@/lib/types";
 import { MEALS, MEAL_EMOJI, MEAL_LABEL, useUI, type FoodTab } from "@/lib/ui";
 import { Button, Chip, EmptyState, Field, Input, Sheet, Skeleton, Textarea } from "../ui";
@@ -18,6 +20,7 @@ const TABS: { value: FoodTab; label: string; icon: typeof Sparkles }[] = [
   { value: "photo", label: "Photo", icon: Camera },
   { value: "manual", label: "Manual", icon: PenLine },
   { value: "favorites", label: "Favorites", icon: Star },
+  { value: "plan", label: "From plan", icon: ClipboardList },
 ];
 
 export function FoodDialog() {
@@ -97,6 +100,7 @@ function FoodDialogBody() {
         {foodTab === "photo" && <PhotoTab meal={meal} date={date} />}
         {foodTab === "manual" && <ManualTab meal={meal} date={date} />}
         {foodTab === "favorites" && <FavoritesTab meal={meal} date={date} />}
+        {foodTab === "plan" && <PlanTab meal={meal} date={date ?? todayKey()} />}
       </div>
     </>
   );
@@ -546,6 +550,62 @@ function FavoritesTab({ meal, date }: { meal: MealType; date?: string }) {
         ))}
         {!list.length && <li className="p-4 text-center text-sm text-muted">No matches for “{q}”</li>}
       </ul>
+    </div>
+  );
+}
+
+/* ---------------- From plan ---------------- */
+function PlanTab({ meal, date }: { meal: MealType; date: string }) {
+  const { loading, error, items, log } = usePlannedDay(date);
+  const close = useUI((s) => s.close);
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const foods = items(meal);
+
+  if (loading) return <Skeleton className="h-24" />;
+  if (error)
+    return (
+      <p role="alert" className="rounded-xl bg-surface-2 p-3 text-sm text-muted">
+        {error}
+      </p>
+    );
+  if (!foods.length)
+    return <EmptyState icon={<ClipboardList className="size-5" />} title={`Nothing planned for ${MEAL_LABEL[meal].toLowerCase()}`} description="Pick another meal above, or plan your week on the Plan page." />;
+
+  const todo = foods.filter((f) => !f.logged);
+  const logMeal = async () => {
+    setBusy(true);
+    try {
+      toast(loggedMessage(meal, await log(meal)));
+      close();
+    } catch (e) {
+      toast(e instanceof ApiError ? e.problem.title : "Couldn't log that meal.", { tone: "error" });
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <ul className="divide-y divide-border rounded-2xl border border-border">
+        {foods.map((f) => (
+          <li key={f.id} className="flex items-center gap-3 p-3">
+            <div className="min-w-0 flex-1">
+              <p className="truncate font-medium">{f.food.name}</p>
+              <p className="tabular text-xs text-muted">
+                {formatQuantity(f.quantity)} × {f.food.serving} · {Math.round(f.calories)} kcal · P {f.protein} · C {f.carbs} · F {f.fat}
+              </p>
+            </div>
+            {f.logged && (
+              <span className="inline-flex items-center gap-1 text-xs font-medium text-brand-strong">
+                <Check className="size-4" aria-hidden /> Logged
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
+      <Button className="w-full" onClick={logMeal} disabled={busy || todo.length === 0}>
+        {todo.length === 0 ? "Already logged" : `Log ${MEAL_LABEL[meal].toLowerCase()} · ${Math.round(todo.reduce((s, f) => s + f.calories, 0))} kcal`}
+      </Button>
     </div>
   );
 }

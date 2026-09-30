@@ -18,6 +18,7 @@ const SOURCE_LABEL: Record<NonNullable<FoodEntry["source"]>, string> = {
   favorite: "Favorite",
   "ai-text": "AI",
   "ai-photo": "Photo",
+  plan: "From plan",
 };
 
 export function FoodView() {

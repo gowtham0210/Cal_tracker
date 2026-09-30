@@ -10,7 +10,7 @@ import { HttpError } from "../http/problem.js";
 import { body, checkRange, date, grams, kcal, mealType, parse, rangeQuery, text, uuid } from "../http/validate.js";
 import { notFound } from "./daily.js";
 
-interface FoodRow {
+export interface FoodRow {
   id: string;
   date: string;
   meal: string;

@@ -1,6 +1,7 @@
 import { Router, type Request } from "express";
 import { z } from "zod";
-import { addItem, buildPlan, checkInWeek, copyDay, copyItem, removeItem, setDay, updateItem, weekDates } from "../lib/plan.js";
+import { addItem, buildPlan, checkInWeek, copyDay, copyItem, logMeal, removeItem, setDay, updateItem, weekDates } from "../lib/plan.js";
+import { toFood, type FoodRow } from "./food.js";
 import { discardDraft, fillDraft, keepDraft, prepareDraft } from "../lib/plan-generate.js";
 import { swapOptions } from "../lib/plan-swap.js";
 import { body, date, mealType, parse, uuid } from "../http/validate.js";
@@ -95,6 +96,15 @@ plans.put("/:weekStart/days/:date", (req, res) => {
   requireProfile(res.locals.userId);
   setDay(res.locals.userId, weekStart, dayParam(req), parse(dayItemsInput, req.body).items);
   res.json(planResponse(res.locals.userId, weekStart));
+});
+
+// Logs a planned meal to the food log, with the plan's numbers.
+plans.post("/:weekStart/days/:date/meals/:meal/log", (req, res) => {
+  const weekStart = weekParam(req);
+  requireProfile(res.locals.userId);
+  const { meal } = parse(z.object({ meal: mealType }), { meal: req.params.meal });
+  const rows = logMeal(res.locals.userId, weekStart, dayParam(req), meal) as FoodRow[];
+  res.status(201).json({ entries: rows.map(toFood), plan: planResponse(res.locals.userId, weekStart) });
 });
 
 plans.post("/:weekStart/days/:date/copy", (req, res) => {

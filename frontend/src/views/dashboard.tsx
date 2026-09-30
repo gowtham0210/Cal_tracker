@@ -21,6 +21,7 @@ import {
 import { addDays, formatDate, greeting, lastNDays, todayKey } from "@/lib/date";
 import { useStore } from "@/lib/store";
 import { MEALS, MEAL_EMOJI, MEAL_LABEL, useUI } from "@/lib/ui";
+import { TodaysPlan } from "./todays-plan";
 
 export function DashboardView() {
   const today = todayKey();
@@ -152,6 +153,8 @@ export function DashboardView() {
           </div>
         </Card>
       </div>
+
+      <TodaysPlan />
 
       <div className="grid gap-5 lg:grid-cols-3">
         {/* Meals */}

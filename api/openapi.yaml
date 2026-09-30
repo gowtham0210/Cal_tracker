@@ -1466,6 +1466,54 @@ paths:
         "404":
           $ref: "#/components/responses/ProfileRequired"
 
+  /meal-plans/{weekStart}/days/{date}/meals/{meal}/log:
+    parameters:
+      - $ref: "#/components/parameters/weekStart"
+      - $ref: "#/components/parameters/pathDate"
+      - name: meal
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/MealType"
+    post:
+      tags: [Planner]
+      operationId: logPlannedMeal
+      summary: Log a planned meal
+      description: |
+        Adds a food entry for each food planned for this meal that isn't logged yet, with the
+        plan's exact numbers (library values × quantity) and `source: plan`. Those foods then
+        show `logged: true`, even if the day is later rebuilt; deleting an entry unlogs its food.
+      responses:
+        "201":
+          description: The new entries, and the plan with them marked as logged.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [entries, plan]
+                properties:
+                  entries:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/FoodEntry"
+                  plan:
+                    $ref: "#/components/schemas/MealPlan"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Nothing is planned for this meal, or the profile isn't set up yet.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: Every food planned for this meal is already logged.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
   /meal-plans/{weekStart}/days/{date}/copy:
     parameters:
       - $ref: "#/components/parameters/weekStart"
@@ -2169,8 +2217,10 @@ components:
     # ---------- Food
     FoodSource:
       type: string
-      enum: [manual, ai-text, ai-photo, favorite]
-      description: How the entry was added.
+      enum: [manual, ai-text, ai-photo, favorite, plan]
+      description: |
+        How the entry was added. `plan` entries are logged from a meal plan (with the plan's
+        numbers) and can only be created that way.
     FoodEntry:
       type: object
       additionalProperties: false
@@ -2878,7 +2928,7 @@ components:
       allOf:
         - $ref: "#/components/schemas/Nutrition"
       type: object
-      required: [id, date, meal, quantity, position, food]
+      required: [id, date, meal, quantity, position, food, logged]
       properties:
         id:
           $ref: "#/components/schemas/Id"
@@ -2893,6 +2943,11 @@ components:
           minimum: 0
         food:
           $ref: "#/components/schemas/LibraryFood"
+        logged:
+          type: boolean
+          description: |
+            The food log has a plan entry for this food on this day and meal (deleting the entry
+            makes it unlogged again).
     PlanDay:
       allOf:
         - $ref: "#/components/schemas/Nutrition"

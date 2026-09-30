@@ -58,8 +58,9 @@ const insertCurated = named(
 
 // Per food name: the latest logged values, how often it was logged, and the meal it is most often eaten at.
 const loggedFoods = db.prepare<[string], { name: string; meal: LibraryRow["meal"]; calories: number; protein: number; carbs: number; fat: number; n: number; last: string }>(
-  `WITH e AS (SELECT name, meal, calories, protein, carbs, fat, date, created_at, lower(name) AS k FROM food_entries WHERE user_id = ?),
-   latest AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY k ORDER BY date DESC, created_at DESC) AS rn FROM e),
+  // Entries logged from a plan hold a whole portion, not one serving, so they never set a food's values.
+  `WITH e AS (SELECT name, meal, calories, protein, carbs, fat, date, created_at, source, lower(name) AS k FROM food_entries WHERE user_id = ?),
+   latest AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY k ORDER BY date DESC, created_at DESC) AS rn FROM e WHERE source != 'plan'),
    counts AS (SELECT k, count(*) AS n, max(date) AS last FROM e GROUP BY k),
    meals AS (SELECT k, meal, ROW_NUMBER() OVER (PARTITION BY k ORDER BY count(*) DESC, max(date) DESC) AS rn FROM e GROUP BY k, meal)
    SELECT l.name, m.meal, l.calories, l.protein, l.carbs, l.fat, c.n, c.last
@@ -94,6 +95,12 @@ const insertFavorite = named(
 const untagged = db.prepare<[string], { id: string; name: string }>("SELECT id, name FROM library_foods WHERE user_id = ? AND source IN ('logged', 'favorite') AND diet IS NULL");
 const setTags = db.prepare<[string, string, string]>("UPDATE library_foods SET diet = ?, allergens = ? WHERE id = ?");
 const tags = (name: string) => ({ diet: detectDiet(name), allergens: JSON.stringify(detectAllergens(name)) });
+// Foods only ever logged from a plan still count as eaten.
+const syncUseCounts = db.prepare<[string, string]>(
+  `UPDATE library_foods SET use_count = c.n, last_used = c.last
+   FROM (SELECT lower(name) AS k, count(*) AS n, max(date) AS last FROM food_entries WHERE user_id = ? GROUP BY k) AS c
+   WHERE library_foods.user_id = ? AND lower(library_foods.name) = c.k AND (library_foods.use_count IS NOT c.n OR library_foods.last_used IS NOT c.last)`,
+);
 const curatedSeeded = db.prepare<[string], { n: number }>("SELECT count(*) AS n FROM library_foods WHERE user_id = ? AND source = 'curated'");
 
 /** Brings the library up to date with the user's log and favorites (cheap when nothing changed). */
@@ -110,6 +117,7 @@ export const syncLibrary = db.transaction((userId: string) => {
     }
   }
   for (const f of loggedFoods.all(userId)) upsertLogged.run({ id: randomUUID(), userId, ...f, ...tags(f.name) });
+  syncUseCounts.run(userId, userId);
   for (const f of newFavorites.all(userId, userId)) insertFavorite.run({ id: randomUUID(), userId, ...f, ...tags(f.name) });
   for (const f of untagged.all(userId)) {
     const t = tags(f.name);

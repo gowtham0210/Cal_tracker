@@ -36,6 +36,10 @@ const zero = (): Nutrition => ({ calories: 0, protein: 0, carbs: 0, fat: 0 });
 const add = (a: Nutrition, b: Nutrition): Nutrition => ({ calories: a.calories + b.calories, protein: a.protein + b.protein, carbs: a.carbs + b.carbs, fat: a.fat + b.fat });
 const round = (n: Nutrition): Nutrition => ({ calories: r1(n.calories), protein: r1(n.protein), carbs: r1(n.carbs), fat: r1(n.fat) });
 
+/** A planned food's nutrition: the library's per-serving values times the quantity, rounded as everywhere else. */
+export const planNutrition = (food: Nutrition, quantity: number): Nutrition =>
+  round({ calories: food.calories * quantity, protein: food.protein * quantity, carbs: food.carbs * quantity, fat: food.fat * quantity });
+
 /** How far from the goal still counts as on target: ±5% or ±100 kcal, whichever is larger. */
 export const toleranceFor = (goal: number) => Math.max(goal * 0.05, 100);
 
@@ -50,8 +54,13 @@ export const weekDates = (weekStart: string) => Array.from({ length: 7 }, (_, i)
 
 const planFor = db.prepare<[string, string], PlanRow>("SELECT * FROM meal_plans WHERE user_id = ? AND week_start = ?");
 const insertPlan = named("INSERT INTO meal_plans (id, user_id, week_start, source) VALUES (@id, @userId, @weekStart, @source) ON CONFLICT (user_id, week_start) DO NOTHING");
-const itemsOf = db.prepare<[string], ItemRow & { f: string }>(
-  `SELECT i.*, json_object('id', f.id, 'user_id', f.user_id, 'name', f.name, 'meal', f.meal, 'serving', f.serving, 'calories', f.calories,
+// A planned food counts as logged when the food log has a plan entry for it on that day and meal.
+// Matching by name (not by item id) survives the day being rebuilt by Replace, Undo or a draft.
+const LOGGED = `EXISTS (SELECT 1 FROM food_entries e JOIN meal_plans p ON p.id = i.plan_id
+  WHERE e.user_id = p.user_id AND e.source = 'plan' AND e.date = i.date AND e.meal = i.meal AND e.name = f.name COLLATE NOCASE)`;
+
+const itemsOf = db.prepare<[string], ItemRow & { f: string; logged: number }>(
+  `SELECT i.*, ${LOGGED} AS logged, json_object('id', f.id, 'user_id', f.user_id, 'name', f.name, 'meal', f.meal, 'serving', f.serving, 'calories', f.calories,
      'protein', f.protein, 'carbs', f.carbs, 'fat', f.fat, 'source', f.source, 'confidence', f.confidence, 'cuisine', f.cuisine, 'diet', f.diet,
      'allergens', f.allergens, 'ingredients', f.ingredients, 'use_count', f.use_count, 'last_used', f.last_used) AS f
    FROM plan_items i JOIN library_foods f ON f.id = i.food_id
@@ -72,9 +81,9 @@ export function ensurePlan(userId: string, weekStart: string, source: PlanRow["s
 export function buildPlan(userId: string, weekStart: string, calorieGoal: number, allergies: string[]) {
   const plan = planFor.get(userId, weekStart);
   const rows = plan ? itemsOf.all(plan.id) : [];
-  const items = rows.map(({ f, plan_id: _p, food_id: _f, ...i }) => {
+  const items = rows.map(({ f, plan_id: _p, food_id: _f, logged, ...i }) => {
     const food = toLibraryFood(JSON.parse(f) as LibraryRow, allergies);
-    return { id: i.id, date: i.date, meal: i.meal, quantity: i.quantity, position: i.position, food, ...round({ calories: food.calories * i.quantity, protein: food.protein * i.quantity, carbs: food.carbs * i.quantity, fat: food.fat * i.quantity }) };
+    return { id: i.id, date: i.date, meal: i.meal, quantity: i.quantity, position: i.position, food, ...planNutrition(food, i.quantity), logged: logged === 1 };
   });
 
   const days = weekDates(weekStart).map((date) => {
@@ -220,4 +229,32 @@ export const copyItem = db.transaction((userId: string, weekStart: string, itemI
   const { plan, item } = findItem(userId, weekStart, itemId);
   checkInWeek(weekStart, to.date);
   insertItem(plan.id, { date: to.date, meal: to.meal, foodId: item.food_id, quantity: item.quantity });
+});
+
+/* ---------------- Logging ---------------- */
+
+const slotFoods = db.prepare<[string, string, string], ItemRow & { name: string; calories: number; protein: number; carbs: number; fat: number; logged: number }>(
+  `SELECT i.*, f.name, f.calories, f.protein, f.carbs, f.fat, ${LOGGED} AS logged
+   FROM plan_items i JOIN library_foods f ON f.id = i.food_id
+   WHERE i.plan_id = ? AND i.date = ? AND i.meal = ? ORDER BY i.position`,
+);
+const insertEntry = named(
+  `INSERT INTO food_entries (id, user_id, date, meal, name, calories, protein, carbs, fat, source)
+   VALUES (@id, @userId, @date, @meal, @name, @calories, @protein, @carbs, @fat, 'plan')`,
+);
+const entryById = db.prepare<[string, string], { id: string }>("SELECT * FROM food_entries WHERE id = ? AND user_id = ?");
+
+/** Logs a planned meal's foods that aren't logged yet, with the plan's exact numbers. Returns the new entry rows. */
+export const logMeal = db.transaction((userId: string, weekStart: string, date: string, meal: Meal) => {
+  checkInWeek(weekStart, date, "date");
+  const plan = planFor.get(userId, weekStart);
+  const foods = plan ? slotFoods.all(plan.id, date, meal) : [];
+  if (!foods.length) throw new HttpError(404, "nothing-planned", "Nothing is planned for this meal.");
+  const todo = foods.filter((f) => !f.logged);
+  if (!todo.length) throw new HttpError(409, "already-logged", "This meal is already logged.", "Delete the logged entries to log it again.");
+  return todo.map((f) => {
+    const id = randomUUID();
+    insertEntry.run({ id, userId, date, meal, name: f.name, ...planNutrition(f, f.quantity) });
+    return entryById.get(id, userId)!;
+  });
 });

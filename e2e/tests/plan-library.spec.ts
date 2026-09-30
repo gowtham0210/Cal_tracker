@@ -43,7 +43,7 @@ test("on a phone, Plan is in the More sheet and the library opens as a sheet @ph
   await signIn(page, await createUser(request));
   await page.goto("/");
   await page.getByRole("button", { name: "More" }).click();
-  await page.getByRole("link", { name: /Plan/ }).click();
+  await page.getByRole("dialog").getByRole("link", { name: /Plan/ }).click();
   await expect(page).toHaveURL(/\/plan$/);
   await page.getByRole("button", { name: "Food library" }).click();
   const sheet = page.getByRole("dialog", { name: "Food library" });

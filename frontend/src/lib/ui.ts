@@ -4,7 +4,7 @@ import { create } from "zustand";
 import type { MealType } from "./types";
 
 export type DialogKind = "food" | "weight" | "exercise" | "measurement" | "quick" | "more";
-export type FoodTab = "describe" | "photo" | "manual" | "favorites";
+export type FoodTab = "describe" | "photo" | "manual" | "favorites" | "plan";
 
 interface UIState {
   dialog: DialogKind | null;
