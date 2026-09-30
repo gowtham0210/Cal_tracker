@@ -212,6 +212,27 @@ for (const [n, c] of [
   });
 }
 
+/* ---------- Grocery: ingredients for foods without them ---------- */
+const ingredients = await import("../src/ai/prompts/ingredients.js");
+await evalCase("grocery: ingredients", async () => {
+  const foods = [
+    { id: "a", name: "Masala dosa", serving: "1 dosa" },
+    { id: "b", name: "Rajma chawal", serving: "1 plate" },
+    { id: "c", name: "Egg bhurji", serving: "1 bowl" },
+  ];
+  const out = await llm().json({ messages: ingredients.messages(foods), name: "ingredients", jsonSchema: ingredients.jsonSchema(foods.map((f) => f.id)), schema: ingredients.schema, maxTokens: 6000, timeoutMs: 45_000 }, { prompt: `eval:${ingredients.PROMPT}` });
+  const by = new Map(out.foods.map((f) => [f.id, f.ingredients]));
+  const grams = (id: string) => (by.get(id) ?? []).filter((i) => i.unit !== "pc").reduce((s, i) => s + i.amount, 0);
+  const has = (id: string, re: RegExp, category: string) => (by.get(id) ?? []).some((i) => re.test(i.name) && i.category === category);
+  check(
+    "grocery: ingredients",
+    foods.every((f) => (by.get(f.id)?.length ?? 0) >= 2 && grams(f.id) > 40 && grams(f.id) < 900) &&
+      has("b", /rajma|kidney/i, "Dals & legumes") &&
+      has("c", /egg/i, "Dairy & eggs"),
+    foods.map((f) => `${f.name}: ${(by.get(f.id) ?? []).map((i) => `${i.name} ${i.amount}${i.unit} (${i.category})`).join(", ")}`).join(" | "),
+  );
+});
+
 /* ---------- Report ---------- */
 const passed = results.filter((r) => r.pass).length;
 for (const r of results) console.log(`${r.pass ? "PASS" : "FAIL"}  ${r.name}\n      ${r.detail}`);

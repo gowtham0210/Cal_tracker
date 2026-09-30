@@ -28,19 +28,20 @@ export function ExportSheet({ open, onClose, defaultDay }: { open: boolean; onCl
     setDay(defaultDay);
   }
   const [macros, setMacros] = useState(false);
+  const [grocery, setGrocery] = useState(false);
   const [preview, setPreview] = useState<{ key: string; url: string; filename: string; blob: Blob } | { key: string; error: string } | null>(null);
 
   const days = weekStart ? weekDates(weekStart) : [];
   const date = days.includes(day) ? day : days[0];
   // What the preview shows; it's refetched when this changes (and once saves have finished).
-  const key = open && weekStart && pending === 0 ? `${weekStart}|${scope}|${date}|${macros}|${contents}` : null;
+  const key = open && weekStart && pending === 0 ? `${weekStart}|${scope}|${date}|${macros}|${grocery}|${contents}` : null;
 
   useEffect(() => {
     if (!key || !weekStart) return;
     let live = true;
     const t = setTimeout(() => {
       api
-        .exportPlanPdf(weekStart, { scope, date, macros })
+        .exportPlanPdf(weekStart, { scope, date, macros, grocery })
         .then(({ filename, blob }) => live && setPreview({ key, url: URL.createObjectURL(blob), filename, blob }))
         .catch((e) => live && setPreview({ key, error: e instanceof ApiError ? e.problem.title : "Couldn't make the PDF." }));
     }, 250);
@@ -48,7 +49,7 @@ export function ExportSheet({ open, onClose, defaultDay }: { open: boolean; onCl
       live = false;
       clearTimeout(t);
     };
-  }, [key, weekStart, scope, date, macros]);
+  }, [key, weekStart, scope, date, macros, grocery]);
   // Each preview's URL is released once it's replaced or the sheet goes away.
   useEffect(() => () => void (preview && "url" in preview && URL.revokeObjectURL(preview.url)), [preview]);
 
@@ -91,6 +92,10 @@ export function ExportSheet({ open, onClose, defaultDay }: { open: boolean; onCl
           <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-medium">
             <input type="checkbox" className="size-4 accent-[var(--brand)]" checked={macros} onChange={(e) => setMacros(e.target.checked)} />
             Include macros
+          </label>
+          <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-medium">
+            <input type="checkbox" className="size-4 accent-[var(--brand)]" checked={grocery} onChange={(e) => setGrocery(e.target.checked)} />
+            Add grocery list <span className="font-normal text-muted">(approx.)</span>
           </label>
         </div>
         {scope === "day" && (

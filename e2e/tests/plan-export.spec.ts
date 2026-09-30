@@ -14,6 +14,7 @@ test("open the export sheet, preview it and download a PDF", async ({ page, requ
   await sheet.getByRole("radio", { name: "This day" }).click();
   await sheet.getByRole("radiogroup", { name: "Day" }).getByRole("radio", { name: "Monday" }).click();
   await sheet.getByLabel("Include macros").check();
+  await sheet.getByLabel(/Add grocery list/).check();
   await expect(sheet.getByTitle("PDF preview")).toBeVisible();
   await expectAccessible(page, { include: "[role=dialog]" });
 

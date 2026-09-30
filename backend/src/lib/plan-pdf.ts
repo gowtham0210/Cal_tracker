@@ -1,4 +1,5 @@
 import PDFDocument from "pdfkit";
+import type { GroceryList } from "./grocery.js";
 import { MEALS, type Meal, type MealPlan } from "./plan.js";
 
 // The plan as a printable PDF: a week grid on A4 landscape, or one day on A4 portrait. Black
@@ -195,6 +196,55 @@ function dayPage(doc: Doc, plan: MealPlan, name: string, date: string, macros: b
   if (macros && day.status.state !== "empty") doc.font("Helvetica").fontSize(10).text(macroSplit(day));
 }
 
+/* ---------------- Grocery list ---------------- */
+
+function groceryPage(doc: Doc, list: GroceryList, covers: string) {
+  doc.addPage({ size: "A4", layout: "portrait", margin: MARGIN });
+  header(doc, "Grocery list", `Approximate amounts for ${covers}, from typical home recipes. Check what you already have.`);
+  const width = doc.page.width - MARGIN * 2;
+  const bottom = doc.page.height - MARGIN;
+  const box = 8;
+
+  let section = "";
+  const newPage = () => {
+    doc.addPage({ size: "A4", layout: "portrait", margin: MARGIN });
+    doc.y = MARGIN;
+  };
+  const line = (name: string, amount: string) => {
+    const h = Math.max(12, doc.font("Helvetica").fontSize(10).heightOfString(printable(name), { width: width - 150 })) + 3;
+    if (doc.y + h > bottom) {
+      newPage();
+      heading(`${section} (continued)`, false);
+    }
+    const y = doc.y;
+    // An empty square to tick on paper.
+    doc.save().lineWidth(0.8).strokeColor(INK).rect(MARGIN, y + 1, box, box).stroke().restore();
+    doc.font("Helvetica").fontSize(10).fillColor(INK).text(printable(name), MARGIN + box + 8, y, { width: width - 150 });
+    const after = doc.y;
+    doc.fillColor(SOFT).text(amount, MARGIN, y, { width, align: "right" });
+    doc.y = Math.max(after, y + 12) + 3;
+  };
+  function heading(title: string, starts = true) {
+    // Keep a heading with at least its first line.
+    if (doc.y + 40 > bottom) newPage();
+    if (starts) section = title;
+    doc.moveDown(0.4);
+    doc.font("Helvetica-Bold").fontSize(11).fillColor(INK).text(title, MARGIN);
+    rule(doc, MARGIN, MARGIN + width, doc.y + 1);
+    doc.moveDown(0.4);
+  }
+
+  for (const c of list.categories) {
+    heading(c.name);
+    for (const l of c.lines) line(l.name, `approx. ${l.amount}`);
+  }
+  if (list.dishes.length) {
+    heading("Dishes to make or buy");
+    for (const d of list.dishes) line(`${d.name} × ${qty(d.servings)} ${d.servings === 1 ? "serving" : "servings"}`, "ingredients not known");
+  }
+  if (!list.categories.length && !list.dishes.length) doc.font("Helvetica").fontSize(10).fillColor(SOFT).text("Nothing planned yet.", MARGIN);
+}
+
 /* ---------------- Document ---------------- */
 
 export interface PdfOptions {
@@ -203,6 +253,8 @@ export interface PdfOptions {
   scope: "week" | "day";
   date?: string;
   macros: boolean;
+  /** Adds a grocery list page. */
+  grocery?: GroceryList;
 }
 
 export function planPdf(o: PdfOptions): Promise<Buffer> {
@@ -220,6 +272,7 @@ export function planPdf(o: PdfOptions): Promise<Buffer> {
   });
   if (o.scope === "week") weekPage(doc, o.plan, o.name, o.macros);
   else dayPage(doc, o.plan, o.name, o.date!, o.macros);
+  if (o.grocery) groceryPage(doc, o.grocery, o.scope === "week" ? weekRange(o.plan.days) : dateText(o.date!, { day: "numeric", month: "long", year: "numeric" }));
   doc.end();
   return done;
 }

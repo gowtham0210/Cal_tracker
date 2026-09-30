@@ -4,7 +4,9 @@
 export type Meal = "breakfast" | "lunch" | "dinner" | "snack";
 export type Cuisine = "tamil-nadu" | "south-indian" | "north-indian" | "any";
 export type Diet = "veg" | "eggetarian" | "non-veg";
-export type GroceryCategory = "Vegetables & fruit" | "Grains & millets" | "Dals & legumes" | "Dairy & eggs" | "Meat & fish" | "Nuts & seeds" | "Oils, spices & others";
+/** Grocery list sections, in the order they're printed. */
+export const GROCERY_CATEGORIES = ["Vegetables & fruit", "Grains & millets", "Dals & legumes", "Dairy & eggs", "Meat & fish", "Nuts & seeds", "Oils, spices & others"] as const;
+export type GroceryCategory = (typeof GROCERY_CATEGORIES)[number];
 
 export interface Ingredient {
   name: string;

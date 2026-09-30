@@ -1721,6 +1721,17 @@ paths:
             type: string
             enum: ["true", "false"]
             default: "false"
+        - name: includeGrocery
+          in: query
+          description: |
+            Add a grocery list page: each planned food's main ingredients times its servings,
+            added up and grouped by category, every amount marked "approx.". Curated dishes come
+            with ingredients; other foods are estimated by the AI once and stored. Without the AI,
+            those foods are listed as dishes to make or buy.
+          schema:
+            type: string
+            enum: ["true", "false"]
+            default: "false"
       responses:
         "200":
           description: The PDF, as an attachment named `meal-plan-{date}.pdf`.

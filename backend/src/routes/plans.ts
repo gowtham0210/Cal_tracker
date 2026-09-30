@@ -1,4 +1,4 @@
-import { Router, type Request } from "express";
+import { Router, type Request, type Response } from "express";
 import { z } from "zod";
 import { addItem, buildPlan, checkInWeek, copyDay, copyItem, logMeal, removeItem, setDay, updateItem, weekDates } from "../lib/plan.js";
 import { toFood, type FoodRow } from "./food.js";
@@ -6,6 +6,7 @@ import { discardDraft, fillDraft, keepDraft, prepareDraft } from "../lib/plan-ge
 import { swapOptions } from "../lib/plan-swap.js";
 import { applyTemplate } from "../lib/templates.js";
 import { planPdf } from "../lib/plan-pdf.js";
+import { ensureIngredients, groceryList } from "../lib/grocery.js";
 import { db } from "../db/index.js";
 import { body, date, mealType, parse, uuid } from "../http/validate.js";
 import { HttpError, type Problem } from "../http/problem.js";
@@ -73,19 +74,21 @@ const copyDayInput = body({
   mode: z.enum(["replace", "add"], "Must be replace or add."),
 });
 
+/** Counts an AI call against the user's limit; over the limit, the caller carries on without the AI. */
+function aiAllowed(req: Request, res: Response) {
+  try {
+    aiRateLimit(req, res, () => {});
+    return true;
+  } catch {
+    res.removeHeader("Retry-After");
+    return false;
+  }
+}
+
 // The ranking alone never costs an AI call, so going over the AI limit only turns the AI off.
 plans.get("/:weekStart/items/:itemId/swaps", async (req, res) => {
   const weekStart = weekParam(req);
-  const aiAllowed = () => {
-    try {
-      aiRateLimit(req, res, () => {});
-      return true;
-    } catch {
-      res.removeHeader("Retry-After");
-      return false;
-    }
-  };
-  res.json(await swapOptions(res.locals.userId, requireProfile(res.locals.userId), weekStart, itemParam(req), aiAllowed));
+  res.json(await swapOptions(res.locals.userId, requireProfile(res.locals.userId), weekStart, itemParam(req), () => aiAllowed(req, res)));
 });
 
 plans.post("/:weekStart/items/:itemId/copy", (req, res) => {
@@ -193,6 +196,7 @@ const exportQuery = z
     scope: z.enum(["week", "day"], "Must be week or day.").default("week"),
     date: date.optional(),
     includeMacros: z.enum(["true", "false"], "Must be true or false.").default("false"),
+    includeGrocery: z.enum(["true", "false"], "Must be true or false.").default("false"),
   })
   .superRefine((v, ctx) => {
     if (v.scope === "day" && !v.date) ctx.addIssue({ code: "custom", path: ["date"], message: "Choose the day to export." });
@@ -203,7 +207,14 @@ plans.get("/:weekStart/export", async (req, res) => {
   const q = parse(exportQuery, req.query);
   if (q.scope === "day") checkInWeek(weekStart, q.date!);
   const plan = planResponse(res.locals.userId, weekStart);
-  const pdf = await planPdf({ plan, name: userName.get(res.locals.userId)?.name ?? "", scope: q.scope, date: q.date, macros: q.includeMacros === "true" });
+  let grocery;
+  if (q.includeGrocery === "true") {
+    // Estimating ingredients costs an AI call only for foods that have none yet.
+    const dates = q.scope === "day" ? [q.date!] : weekDates(weekStart);
+    await ensureIngredients(res.locals.userId, plan, dates, () => aiAllowed(req, res));
+    grocery = groceryList(res.locals.userId, plan, dates);
+  }
+  const pdf = await planPdf({ plan, name: userName.get(res.locals.userId)?.name ?? "", scope: q.scope, date: q.date, macros: q.includeMacros === "true", grocery });
   res
     .status(200)
     .set({ "Content-Type": "application/pdf", "Content-Disposition": `attachment; filename="meal-plan-${q.scope === "day" ? q.date : weekStart}.pdf"`, "Cache-Control": "no-store" })
