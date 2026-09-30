@@ -15,6 +15,7 @@ import { CopyDaySheet } from "./copy-day-sheet";
 import { DayView } from "./day-view";
 import { FoodLibrary } from "./food-library";
 import { ItemSheet } from "./item-sheet";
+import { DraggableFood, PlanDnd } from "./plan-dnd";
 import { useUndoable } from "./use-undoable";
 import { WeekGrid } from "./week-grid";
 import { WeekSummary } from "./week-summary";
@@ -120,68 +121,70 @@ export function PlanView() {
   const empty = plan && plan.items.length === 0 && !building[monday];
 
   return (
-    <div className={clsx(showPanel && "lg:flex lg:gap-6")}>
-      {showPanel && (
-        <aside aria-label="Food library" className="sticky top-8 flex h-[calc(100dvh-4rem)] w-72 shrink-0 flex-col">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-[15px] font-semibold">Food library</h2>
-            <Button variant="ghost" size="icon" aria-label="Hide food library" onClick={() => setLibraryPanel(false)}>
-              <PanelLeftClose className="size-4" />
-            </Button>
-          </div>
-          <FoodLibrary className="flex-1" />
-        </aside>
-      )}
-
-      <div className="min-w-0 flex-1 space-y-4">
-        <PageHeader
-          title="Plan"
-          subtitle={<SaveState />}
-          action={
-            <div className="flex flex-wrap items-center gap-2">
-              <WeekSwitcher monday={monday} onChange={changeWeek} />
-              {!showPanel && (
-                <Button variant="outline" aria-expanded={false} onClick={() => (wide ? setLibraryPanel(true) : setLibrarySheet(true))}>
-                  <BookOpen className="size-4" /> Food library
-                </Button>
-              )}
+    <PlanDnd>
+      <div className={clsx(showPanel && "lg:flex lg:gap-6")}>
+        {showPanel && (
+          <aside aria-label="Food library" className="sticky top-8 flex h-[calc(100dvh-4rem)] w-72 shrink-0 flex-col">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-[15px] font-semibold">Food library</h2>
+              <Button variant="ghost" size="icon" aria-label="Hide food library" onClick={() => setLibraryPanel(false)}>
+                <PanelLeftClose className="size-4" />
+              </Button>
             </div>
-          }
-        />
-
-        {error ? (
-          <Card role="alert">
-            <p className="font-medium">Couldn&apos;t load this week</p>
-            <p className="mt-1 text-sm text-muted">{error}</p>
-            <Button className="mt-3" onClick={() => void load(monday)}>
-              Try again
-            </Button>
-          </Card>
-        ) : loading || !plan ? (
-          <div aria-busy="true" aria-label="Loading your plan" className="space-y-3">
-            <Skeleton className="h-12" />
-            <Skeleton className="h-96" />
-          </div>
-        ) : empty ? (
-          <StartCards onBuild={() => setBuilding((b) => ({ ...b, [monday]: true }))} />
-        ) : (
-          <>
-            <WeekSummary plan={plan} />
-            {wide ? (
-              <WeekGrid plan={plan} onOpen={(i) => setPortionFor(i.id)} onAdd={setAddTo} dayActions={dayActions} />
-            ) : (
-              <DayView plan={plan} day={day} onDay={setDay} onOpen={(i) => setPortionFor(i.id)} onAdd={setAddTo} dayActions={dayActions} />
-            )}
-          </>
+            <FoodLibrary className="flex-1" wrapCard={(food, card) => <DraggableFood food={food}>{card}</DraggableFood>} />
+          </aside>
         )}
-      </div>
 
-      <Sheet open={librarySheet} onClose={() => setLibrarySheet(false)} title="Food library">
-        <FoodLibrary className="h-[60dvh]" />
-      </Sheet>
-      <AddFoodSheet target={addTo} onClose={() => setAddTo(null)} />
-      <ItemSheet item={portionItem} onClose={() => setPortionFor(null)} />
-      <CopyDaySheet from={copyFrom} onClose={() => setCopyFrom(null)} />
-    </div>
+        <div className="min-w-0 flex-1 space-y-4">
+          <PageHeader
+            title="Plan"
+            subtitle={<SaveState />}
+            action={
+              <div className="flex flex-wrap items-center gap-2">
+                <WeekSwitcher monday={monday} onChange={changeWeek} />
+                {!showPanel && (
+                  <Button variant="outline" aria-expanded={false} onClick={() => (wide ? setLibraryPanel(true) : setLibrarySheet(true))}>
+                    <BookOpen className="size-4" /> Food library
+                  </Button>
+                )}
+              </div>
+            }
+          />
+
+          {error ? (
+            <Card role="alert">
+              <p className="font-medium">Couldn&apos;t load this week</p>
+              <p className="mt-1 text-sm text-muted">{error}</p>
+              <Button className="mt-3" onClick={() => void load(monday)}>
+                Try again
+              </Button>
+            </Card>
+          ) : loading || !plan ? (
+            <div aria-busy="true" aria-label="Loading your plan" className="space-y-3">
+              <Skeleton className="h-12" />
+              <Skeleton className="h-96" />
+            </div>
+          ) : empty ? (
+            <StartCards onBuild={() => setBuilding((b) => ({ ...b, [monday]: true }))} />
+          ) : (
+            <>
+              <WeekSummary plan={plan} />
+              {wide ? (
+                <WeekGrid plan={plan} onOpen={(i) => setPortionFor(i.id)} onAdd={setAddTo} dayActions={dayActions} />
+              ) : (
+                <DayView plan={plan} day={day} onDay={setDay} onOpen={(i) => setPortionFor(i.id)} onAdd={setAddTo} dayActions={dayActions} />
+              )}
+            </>
+          )}
+        </div>
+
+        <Sheet open={librarySheet} onClose={() => setLibrarySheet(false)} title="Food library">
+          <FoodLibrary className="h-[60dvh]" />
+        </Sheet>
+        <AddFoodSheet target={addTo} onClose={() => setAddTo(null)} />
+        <ItemSheet item={portionItem} onClose={() => setPortionFor(null)} />
+        <CopyDaySheet from={copyFrom} onClose={() => setCopyFrom(null)} />
+      </div>
+    </PlanDnd>
   );
 }
