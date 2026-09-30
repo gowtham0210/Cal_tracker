@@ -1,9 +1,10 @@
 "use client";
 
 import clsx from "clsx";
-import { Camera, Plus, Sparkles, Star, Trash2 } from "lucide-react";
+import { Camera, Pencil, Plus, Sparkles, Star, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { DayNav } from "@/components/day-nav";
+import { EditFoodDialog } from "@/components/dialogs/edit-food-dialog";
 import { Card, EmptyState, PageHeader, ProgressBar } from "@/components/ui";
 import { useToast } from "@/components/ui/toast";
 import { MacroBars, SuggestionsCard } from "@/components/widgets";
@@ -23,6 +24,7 @@ const SOURCE_LABEL: Record<NonNullable<FoodEntry["source"]>, string> = {
 
 export function FoodView() {
   const [date, setDate] = useState(todayKey());
+  const [editing, setEditing] = useState<FoodEntry | null>(null);
   const foods = useStore((s) => s.foods);
   const exercises = useStore((s) => s.exercises);
   const favorites = useStore((s) => s.favorites);
@@ -128,7 +130,12 @@ export function FoodView() {
                     const fav = isFav(f.name);
                     return (
                       <li key={f.id} className="group flex items-center gap-2 px-4 py-2.5 sm:px-5">
-                        <div className="min-w-0 flex-1">
+                        <button
+                          type="button"
+                          onClick={() => setEditing(f)}
+                          aria-label={`Edit ${f.name}`}
+                          className="-mx-1.5 min-w-0 flex-1 rounded-lg px-1.5 py-0.5 text-left transition hover:bg-surface-2"
+                        >
                           <p className="flex items-center gap-1.5 truncate text-sm font-medium">
                             <span className="truncate">{f.name}</span>
                             {f.source && SOURCE_LABEL[f.source] && (
@@ -142,7 +149,7 @@ export function FoodView() {
                               P {f.protein}g · C {f.carbs}g · F {f.fat}g
                             </p>
                           )}
-                        </div>
+                        </button>
                         <input
                           aria-label={`Calories for ${f.name}`}
                           inputMode="numeric"
@@ -182,6 +189,13 @@ export function FoodView() {
                           <Star className={clsx("size-4", fav && "fill-amber-400 text-amber-400")} />
                         </button>
                         <button
+                          aria-label={`Edit ${f.name}`}
+                          onClick={() => setEditing(f)}
+                          className="grid size-8 place-items-center rounded-lg text-subtle transition hover:bg-surface-2 hover:text-text sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"
+                        >
+                          <Pencil className="size-4" />
+                        </button>
+                        <button
                           aria-label={`Delete ${f.name}`}
                           onClick={() => del(f)}
                           className="grid size-8 place-items-center rounded-lg text-subtle transition hover:bg-surface-2 hover:text-danger sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100"
@@ -218,9 +232,11 @@ export function FoodView() {
         </Card>
       )}
 
+      <EditFoodDialog entry={editing} onClose={() => setEditing(null)} />
+
       {date === todayKey() && <SuggestionsCard date={date} />}
       {date === todayKey() && (
-        <p className="text-center text-xs text-subtle">Tip: tap a calorie number to edit it. Star an item to save it as a favorite.</p>
+        <p className="text-center text-xs text-subtle">Tip: tap a food to edit its name, meal, calories or macros. Star an item to save it as a favorite.</p>
       )}
     </div>
   );
