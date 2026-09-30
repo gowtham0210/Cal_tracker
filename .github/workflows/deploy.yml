@@ -58,6 +58,8 @@ jobs:
       contents: read
       packages: write
     strategy:
+      # Let both images finish, so one failure doesn't hide the other's result.
+      fail-fast: false
       matrix:
         app: [backend, frontend]
     steps:
