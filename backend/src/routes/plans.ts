@@ -5,6 +5,8 @@ import { toFood, type FoodRow } from "./food.js";
 import { discardDraft, fillDraft, keepDraft, prepareDraft } from "../lib/plan-generate.js";
 import { swapOptions } from "../lib/plan-swap.js";
 import { applyTemplate } from "../lib/templates.js";
+import { planPdf } from "../lib/plan-pdf.js";
+import { db } from "../db/index.js";
 import { body, date, mealType, parse, uuid } from "../http/validate.js";
 import { HttpError, type Problem } from "../http/problem.js";
 import { aiRateLimit } from "./coach.js";
@@ -181,4 +183,29 @@ plans.post("/:weekStart/draft/discard", (req, res) => {
   const weekStart = weekParam(req);
   discardDraft(res.locals.userId, weekStart);
   res.json(planResponse(res.locals.userId, weekStart));
+});
+
+/* ---------------- Export ---------------- */
+
+const userName = db.prepare<[string], { name: string }>("SELECT name FROM users WHERE id = ?");
+const exportQuery = z
+  .object({
+    scope: z.enum(["week", "day"], "Must be week or day.").default("week"),
+    date: date.optional(),
+    includeMacros: z.enum(["true", "false"], "Must be true or false.").default("false"),
+  })
+  .superRefine((v, ctx) => {
+    if (v.scope === "day" && !v.date) ctx.addIssue({ code: "custom", path: ["date"], message: "Choose the day to export." });
+  });
+
+plans.get("/:weekStart/export", async (req, res) => {
+  const weekStart = weekParam(req);
+  const q = parse(exportQuery, req.query);
+  if (q.scope === "day") checkInWeek(weekStart, q.date!);
+  const plan = planResponse(res.locals.userId, weekStart);
+  const pdf = await planPdf({ plan, name: userName.get(res.locals.userId)?.name ?? "", scope: q.scope, date: q.date, macros: q.includeMacros === "true" });
+  res
+    .status(200)
+    .set({ "Content-Type": "application/pdf", "Content-Disposition": `attachment; filename="meal-plan-${q.scope === "day" ? q.date : weekStart}.pdf"`, "Cache-Control": "no-store" })
+    .send(pdf);
 });

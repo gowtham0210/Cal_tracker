@@ -17,6 +17,7 @@
     "express": "^5.2.1",
     "jose": "^6.2.12",
     "openai": "^7.24.0",
+    "pdfkit": "^0.20.2",
     "zod": "^4.6.5"
   },
   "devDependencies": {
@@ -24,8 +25,10 @@
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/node": "^24.19.0",
+    "@types/pdfkit": "^0.17.6",
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1",
+    "pdfjs-dist": "^6.3.289",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
     "yaml": "^2.9.1"

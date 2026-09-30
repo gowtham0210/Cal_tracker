@@ -41,6 +41,31 @@ export async function api<T = any>(
   return { status: res.status, headers: res.headers, body };
 }
 
+/** Fetches a binary download (e.g. a PDF), checking its status and media type against the spec. */
+export async function download(path: string, token: string) {
+  const res = await fetch(base() + path, { headers: { authorization: `Bearer ${token}` } });
+  const type = res.headers.get("content-type");
+  const bytes = Buffer.from(await res.arrayBuffer());
+  const json = type?.includes("json") ? JSON.parse(bytes.toString("utf8")) : undefined;
+  // Binary bodies are strings in the spec; the caller checks the bytes themselves.
+  assertMatchesSpec("GET", path.split("?")[0], res.status, type, json ?? bytes.toString("latin1"));
+  return { status: res.status, headers: res.headers, bytes, json };
+}
+
+/** The text of each page of a PDF, and whether it's landscape. */
+export async function pdfPages(bytes: Buffer) {
+  const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const pdf = await getDocument({ data: new Uint8Array(bytes), verbosity: 0 }).promise;
+  const pages: { text: string; landscape: boolean }[] = [];
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const [, , w, h] = page.view;
+    const content = await page.getTextContent();
+    pages.push({ text: content.items.map((x) => ("str" in x ? x.str : "")).join(" ").replace(/\s+/g, " "), landscape: w > h });
+  }
+  return pages;
+}
+
 let n = 0;
 /** Registers a fresh user and returns their token. */
 export async function newUser(name = "Test User") {

@@ -1690,6 +1690,55 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+  /meal-plans/{weekStart}/export:
+    parameters:
+      - $ref: "#/components/parameters/weekStart"
+    get:
+      tags: [Planner]
+      operationId: exportPlanPdf
+      summary: Download the plan as a PDF
+      description: |
+        `week`: a grid of the week on A4 landscape, with each day's total and goal status. `day`:
+        one day on A4 portrait, meal by meal with portions. The header has the user's name, the
+        dates and the calorie goal. Status is written in words ("On target", "Under by 250
+        kcal"), and only black and grey are used, so it prints well in black and white.
+      parameters:
+        - name: scope
+          in: query
+          schema:
+            type: string
+            enum: [week, day]
+            default: week
+        - name: date
+          in: query
+          description: The day to export. Required when `scope` is `day`.
+          schema:
+            $ref: "#/components/schemas/Date"
+        - name: includeMacros
+          in: query
+          description: Include protein, carbs and fat per day (and a weekly average).
+          schema:
+            type: string
+            enum: ["true", "false"]
+            default: "false"
+      responses:
+        "200":
+          description: The PDF, as an attachment named `meal-plan-{date}.pdf`.
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/ProfileRequired"
 
   # ---------------------------------------------------------------- Templates
   /plan-templates:

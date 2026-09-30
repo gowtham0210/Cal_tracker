@@ -474,6 +474,13 @@ export const api = {
   keepPlanDraft: (weekStart: string) => json<MealPlan>("POST", `/meal-plans/${weekStart}/draft/keep`),
   discardPlanDraft: (weekStart: string) => json<MealPlan>("POST", `/meal-plans/${weekStart}/draft/discard`),
 
+  /** The plan as a PDF: a week grid, or one day. */
+  async exportPlanPdf(weekStart: string, opts: { scope: "week" | "day"; date?: string; macros: boolean }): Promise<{ filename: string; blob: Blob }> {
+    const qs = new URLSearchParams({ scope: opts.scope, includeMacros: String(opts.macros), ...(opts.scope === "day" && opts.date ? { date: opts.date } : {}) });
+    const res = await send("GET", `/meal-plans/${weekStart}/export?${qs}`, { accept: "application/pdf" });
+    const filename = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") ?? "")?.[1] ?? `meal-plan-${weekStart}.pdf`;
+    return { filename, blob: await res.blob() };
+  },
   /** Downloads an export as a file. */
   async exportCsv(kind: string): Promise<{ filename: string; blob: Blob }> {
     const res = await send("GET", `/exports/${kind}`, { accept: "text/csv" });

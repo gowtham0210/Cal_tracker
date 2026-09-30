@@ -1,7 +1,7 @@
 "use client";
 
 import clsx from "clsx";
-import { BookOpen, Check, ChevronLeft, ChevronRight, Copy, Eraser, LayoutTemplate, Loader2, PanelLeftClose, PencilLine, Sparkles } from "lucide-react";
+import { BookOpen, Check, ChevronLeft, ChevronRight, Copy, Eraser, FileDown, LayoutTemplate, Loader2, PanelLeftClose, PencilLine, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button, Card, PageHeader, Sheet, Skeleton } from "@/components/ui";
 import type { MenuItem } from "@/components/ui/menu";
@@ -14,6 +14,7 @@ import { AddFoodSheet, type SlotTarget } from "./add-food-sheet";
 import { CopyDaySheet } from "./copy-day-sheet";
 import { DayView } from "./day-view";
 import { DraftBanner } from "./draft-banner";
+import { ExportSheet } from "./export-sheet";
 import { FoodLibrary } from "./food-library";
 import { GenerateSheet } from "./generate-sheet";
 import { ItemSheet } from "./item-sheet";
@@ -116,6 +117,7 @@ export function PlanView() {
   const [generateOpen, setGenerateOpen] = useState(false);
   const [swapFor, setSwapFor] = useState<string | null>(null);
   const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [templates, setTemplates] = useState<PlanTemplate[]>([]);
   const loadTemplates = () => void api.templates().then(setTemplates, () => {});
   useEffect(loadTemplates, []);
@@ -187,6 +189,11 @@ export function PlanView() {
                   <LayoutTemplate className="size-4" /> Templates
                 </Button>
               )}
+              {!empty && (
+                <Button variant="outline" onClick={() => setExportOpen(true)}>
+                  <FileDown className="size-4" /> Export
+                </Button>
+              )}
                 {!showPanel && (
                   <Button variant="outline" aria-expanded={false} onClick={() => (wide ? setLibraryPanel(true) : setLibrarySheet(true))}>
                     <BookOpen className="size-4" /> Food library
@@ -231,6 +238,7 @@ export function PlanView() {
         <ItemSheet item={portionItem} onClose={() => setPortionFor(null)} onSwap={(i) => setSwapFor(i.id)} />
         <SwapSheet item={plan?.items.find((i) => i.id === swapFor) ?? null} onClose={() => setSwapFor(null)} />
         <CopyDaySheet from={copyFrom} onClose={() => setCopyFrom(null)} />
+        <ExportSheet key={`export-${monday}`} open={exportOpen} onClose={() => setExportOpen(false)} defaultDay={day} />
         <TemplatesSheet key={monday} open={templatesOpen} onClose={() => setTemplatesOpen(false)} templates={templates} onChanged={loadTemplates} />
         <GenerateSheet open={generateOpen} onClose={() => setGenerateOpen(false)} defaultDay={day} />
       </div>
