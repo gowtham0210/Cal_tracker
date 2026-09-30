@@ -4,6 +4,7 @@ import { addItem, buildPlan, checkInWeek, copyDay, copyItem, logMeal, removeItem
 import { toFood, type FoodRow } from "./food.js";
 import { discardDraft, fillDraft, keepDraft, prepareDraft } from "../lib/plan-generate.js";
 import { swapOptions } from "../lib/plan-swap.js";
+import { applyTemplate } from "../lib/templates.js";
 import { body, date, mealType, parse, uuid } from "../http/validate.js";
 import { HttpError, type Problem } from "../http/problem.js";
 import { aiRateLimit } from "./coach.js";
@@ -105,6 +106,14 @@ plans.post("/:weekStart/days/:date/meals/:meal/log", (req, res) => {
   const { meal } = parse(z.object({ meal: mealType }), { meal: req.params.meal });
   const rows = logMeal(res.locals.userId, weekStart, dayParam(req), meal) as FoodRow[];
   res.status(201).json({ entries: rows.map(toFood), plan: planResponse(res.locals.userId, weekStart) });
+});
+
+plans.post("/:weekStart/apply-template", (req, res) => {
+  const weekStart = weekParam(req);
+  requireProfile(res.locals.userId);
+  const { templateId, mode } = parse(body({ templateId: uuid, mode: z.enum(["replace", "fill"], "Must be replace or fill.") }), req.body);
+  applyTemplate(res.locals.userId, weekStart, templateId, mode);
+  res.json(planResponse(res.locals.userId, weekStart));
 });
 
 plans.post("/:weekStart/days/:date/copy", (req, res) => {

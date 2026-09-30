@@ -1,11 +1,11 @@
 "use client";
 
 import clsx from "clsx";
-import { BookOpen, Check, ChevronLeft, ChevronRight, Copy, Eraser, Loader2, PanelLeftClose, PencilLine, Sparkles } from "lucide-react";
+import { BookOpen, Check, ChevronLeft, ChevronRight, Copy, Eraser, LayoutTemplate, Loader2, PanelLeftClose, PencilLine, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button, Card, PageHeader, Sheet, Skeleton } from "@/components/ui";
 import type { MenuItem } from "@/components/ui/menu";
-import type { PlanItem } from "@/lib/api";
+import { api, type PlanItem, type PlanTemplate } from "@/lib/api";
 import { addDays, todayKey } from "@/lib/date";
 import { usePlan } from "@/lib/plan-store";
 import { useMediaQuery } from "@/lib/use-media-query";
@@ -18,6 +18,7 @@ import { FoodLibrary } from "./food-library";
 import { GenerateSheet } from "./generate-sheet";
 import { ItemSheet } from "./item-sheet";
 import { SwapSheet } from "./swap-sheet";
+import { TemplatesSheet } from "./templates-sheet";
 import { DraggableFood, PlanDnd } from "./plan-dnd";
 import { useUndoable } from "./use-undoable";
 import { WeekGrid } from "./week-grid";
@@ -58,7 +59,7 @@ function SaveState() {
   );
 }
 
-function StartCards({ onBuild, onGenerate }: { onBuild: () => void; onGenerate: () => void }) {
+function StartCards({ onBuild, onGenerate, onTemplate }: { onBuild: () => void; onGenerate: () => void; onTemplate?: () => void }) {
   return (
     <Card>
       <h2 className="font-semibold">This week is empty</h2>
@@ -86,6 +87,19 @@ function StartCards({ onBuild, onGenerate }: { onBuild: () => void; onGenerate: 
           <span className="font-semibold">Build my own</span>
           <span className="text-sm text-muted">Add foods to each meal yourself. Totals update as you go.</span>
         </button>
+        {onTemplate && (
+          <button
+            type="button"
+            onClick={onTemplate}
+            className="flex flex-col items-start gap-2 rounded-2xl border border-border bg-surface p-5 text-left transition hover:border-brand/60"
+          >
+            <span className="grid size-10 place-items-center rounded-xl bg-surface-2 text-muted">
+              <LayoutTemplate className="size-5" aria-hidden />
+            </span>
+            <span className="font-semibold">Start from a template</span>
+            <span className="text-sm text-muted">Reuse a week you saved before.</span>
+          </button>
+        )}
       </div>
     </Card>
   );
@@ -101,6 +115,10 @@ export function PlanView() {
   const [copyFrom, setCopyFrom] = useState<string | null>(null);
   const [generateOpen, setGenerateOpen] = useState(false);
   const [swapFor, setSwapFor] = useState<string | null>(null);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [templates, setTemplates] = useState<PlanTemplate[]>([]);
+  const loadTemplates = () => void api.templates().then(setTemplates, () => {});
+  useEffect(loadTemplates, []);
   const undoable = useUndoable();
   const setDayItems = usePlan((s) => s.setDay);
   const wide = useMediaQuery("(min-width: 1024px)");
@@ -164,6 +182,11 @@ export function PlanView() {
                   <Sparkles className="size-4" /> Generate
                 </Button>
               )}
+              {!empty && (
+                <Button variant="outline" onClick={() => setTemplatesOpen(true)}>
+                  <LayoutTemplate className="size-4" /> Templates
+                </Button>
+              )}
                 {!showPanel && (
                   <Button variant="outline" aria-expanded={false} onClick={() => (wide ? setLibraryPanel(true) : setLibrarySheet(true))}>
                     <BookOpen className="size-4" /> Food library
@@ -187,7 +210,7 @@ export function PlanView() {
               <Skeleton className="h-96" />
             </div>
           ) : empty ? (
-            <StartCards onBuild={() => setBuilding((b) => ({ ...b, [monday]: true }))} onGenerate={() => setGenerateOpen(true)} />
+            <StartCards onBuild={() => setBuilding((b) => ({ ...b, [monday]: true }))} onGenerate={() => setGenerateOpen(true)} onTemplate={templates.length ? () => setTemplatesOpen(true) : undefined} />
           ) : (
             <>
               <DraftBanner plan={plan} onRegenerate={regenerate} />
@@ -208,6 +231,7 @@ export function PlanView() {
         <ItemSheet item={portionItem} onClose={() => setPortionFor(null)} onSwap={(i) => setSwapFor(i.id)} />
         <SwapSheet item={plan?.items.find((i) => i.id === swapFor) ?? null} onClose={() => setSwapFor(null)} />
         <CopyDaySheet from={copyFrom} onClose={() => setCopyFrom(null)} />
+        <TemplatesSheet key={monday} open={templatesOpen} onClose={() => setTemplatesOpen(false)} templates={templates} onChanged={loadTemplates} />
         <GenerateSheet open={generateOpen} onClose={() => setGenerateOpen(false)} defaultDay={day} />
       </div>
     </PlanDnd>

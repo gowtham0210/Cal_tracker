@@ -38,8 +38,10 @@ interface PlanState {
   /** Takes a plan saved elsewhere (e.g. after logging from the dashboard) if it's the week on screen and nothing is saving. */
   adopt: (plan: MealPlan) => void;
   generate: (req: GenerateRequest) => Promise<void>;
-  keepDraft: () => Promise<void>;
-  discardDraft: () => Promise<void>;
+  keepDraft: () => Promise<boolean>;
+  /** Resolves true once applied (false if it failed, which is reported). */
+  applyTemplate: (templateId: string, mode: "replace" | "fill") => Promise<boolean>;
+  discardDraft: () => Promise<boolean>;
 
   /** The foods planned on some days, to undo a change later with restoreDays. */
   snapshotDays: (dates: string[]) => DaySnapshot;
@@ -79,10 +81,10 @@ export const usePlan = create<PlanState>()((set, get) => {
       });
   }
 
-  /** Runs a whole-plan server step after pending saves, and adopts the plan it returns. */
-  async function step(run: (weekStart: string) => Promise<MealPlan>, failure: string) {
+  /** Runs a whole-plan server step after pending saves, and adopts the plan it returns. Resolves whether it worked. */
+  async function step(run: (weekStart: string) => Promise<MealPlan>, failure: string): Promise<boolean> {
     const { weekStart } = get();
-    if (!weekStart) return;
+    if (!weekStart) return false;
     set({ pending: get().pending + 1, touched: true });
     const next = queue.then(() => run(weekStart));
     queue = next.catch(() => {});
@@ -90,9 +92,11 @@ export const usePlan = create<PlanState>()((set, get) => {
       const plan = await next;
       // As with edits, only adopt it when nothing newer is waiting.
       if (get().weekStart === weekStart && get().pending === 1) set({ plan });
+      return true;
     } catch (err) {
       if (!(err instanceof ApiError && err.status === 401)) reportSyncError(err instanceof ApiError ? (err.problem.detail ?? err.problem.title) : failure);
       void get().load(weekStart);
+      return false;
     } finally {
       set({ pending: get().pending - 1 });
     }
@@ -199,6 +203,7 @@ export const usePlan = create<PlanState>()((set, get) => {
       set({ generating: null });
     },
     keepDraft: () => step((week) => api.keepPlanDraft(week), "Couldn't keep the draft."),
+    applyTemplate: (templateId, mode) => step((week) => api.applyTemplate(week, templateId, mode), "Couldn't apply the template."),
     discardDraft: () => step((week) => api.discardPlanDraft(week), "Couldn't discard the draft."),
 
     snapshotDays: (dates) => Object.fromEntries(dates.map((d) => [d, (get().plan?.items ?? []).filter((i) => i.date === d)])),

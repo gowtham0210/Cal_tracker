@@ -1649,6 +1649,132 @@ paths:
           $ref: "#/components/responses/ProfileRequired"
         "409":
           $ref: "#/components/responses/NoDraft"
+  /meal-plans/{weekStart}/apply-template:
+    parameters:
+      - $ref: "#/components/parameters/weekStart"
+    post:
+      tags: [Planner]
+      operationId: applyPlanTemplate
+      summary: Apply a template to a week
+      description: |
+        `replace` makes the week exactly the template. `fill` adds the template's foods only to
+        meals that are empty in this week, leaving everything planned as it is. Foods deleted
+        from the library since the template was saved are skipped. The plan's `source` becomes
+        `template`. Refused while the week has an open draft.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [templateId, mode]
+              properties:
+                templateId:
+                  $ref: "#/components/schemas/Id"
+                mode:
+                  type: string
+                  enum: [replace, fill]
+      responses:
+        "200":
+          $ref: "#/components/responses/MealPlan"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: The week has an open draft; keep or discard it first.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+
+  # ---------------------------------------------------------------- Templates
+  /plan-templates:
+    get:
+      tags: [Planner]
+      operationId: listPlanTemplates
+      summary: List plan templates
+      description: Newest first. Numbers are worked out from the library now, skipping deleted foods.
+      responses:
+        "200":
+          description: The user's templates.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/PlanTemplate"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [Planner]
+      operationId: savePlanTemplate
+      summary: Save a week as a template
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name, weekStart]
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 60
+                  description: Unique per user, ignoring case.
+                weekStart:
+                  $ref: "#/components/schemas/Date"
+                  description: The Monday of the week to save. It must have something planned.
+      responses:
+        "201":
+          description: Saved.
+          headers:
+            Location:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanTemplate"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: A template with this name already exists.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /plan-templates/{templateId}:
+    parameters:
+      - name: templateId
+        in: path
+        required: true
+        schema:
+          $ref: "#/components/schemas/Id"
+    delete:
+      tags: [Planner]
+      operationId: deletePlanTemplate
+      summary: Delete a template
+      responses:
+        "204":
+          description: Deleted.
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   # ---------------------------------------------------------------- Export
   /exports/{kind}:
@@ -3050,6 +3176,66 @@ components:
         reason:
           type: string
           maxLength: 60
+    PlanTemplate:
+      type: object
+      additionalProperties: false
+      required: [id, name, createdAt, plannedDays, averageCalories, dietTags, days]
+      properties:
+        id:
+          $ref: "#/components/schemas/Id"
+        name:
+          type: string
+        createdAt:
+          $ref: "#/components/schemas/Timestamp"
+        plannedDays:
+          type: integer
+          minimum: 0
+          maximum: 7
+        averageCalories:
+          type: integer
+          description: Average over the days with something planned.
+        dietTags:
+          type: array
+          items:
+            $ref: "#/components/schemas/DietType"
+          description: The diets of the foods in it, e.g. `[eggetarian, veg]`.
+        days:
+          type: array
+          minItems: 7
+          maxItems: 7
+          description: A preview, Monday first.
+          items:
+            type: object
+            additionalProperties: false
+            required: [offset, calories, meals]
+            properties:
+              offset:
+                type: integer
+                minimum: 0
+                maximum: 6
+              calories:
+                type: integer
+              meals:
+                type: object
+                additionalProperties: false
+                required: [breakfast, lunch, snack, dinner]
+                properties:
+                  breakfast:
+                    type: array
+                    items:
+                      type: string
+                  lunch:
+                    type: array
+                    items:
+                      type: string
+                  snack:
+                    type: array
+                    items:
+                      type: string
+                  dinner:
+                    type: array
+                    items:
+                      type: string
     PlanSwap:
       type: object
       additionalProperties: false

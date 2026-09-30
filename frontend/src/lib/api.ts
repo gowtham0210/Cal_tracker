@@ -319,6 +319,16 @@ export interface NewFoodSuggestion {
 export type NewLibraryFood = Pick<NewFoodSuggestion, "name" | "meal" | "serving" | "calories" | "protein" | "carbs" | "fat"> &
   Partial<Pick<NewFoodSuggestion, "confidence" | "cuisine" | "diet" | "allergens">>;
 
+export interface PlanTemplate {
+  id: string;
+  name: string;
+  createdAt: string;
+  plannedDays: number;
+  averageCalories: number;
+  dietTags: ("veg" | "eggetarian" | "non-veg")[];
+  days: { offset: number; calories: number; meals: Record<MealType, string[]> }[];
+}
+
 export interface PlanSwap {
   food: LibraryFood;
   quantity: number;
@@ -456,6 +466,11 @@ export const api = {
   planSwaps: (weekStart: string, id: string) => json<{ source: "ai" | "rules"; data: PlanSwap[] }>("GET", `/meal-plans/${weekStart}/items/${enc(id)}/swaps`),
   logPlannedMeal: (weekStart: string, date: string, meal: MealType) =>
     json<{ entries: ApiFoodEntry[]; plan: MealPlan }>("POST", `/meal-plans/${weekStart}/days/${date}/meals/${meal}/log`),
+  templates: () => json<{ data: PlanTemplate[] }>("GET", "/plan-templates").then((r) => r.data),
+  saveTemplate: (name: string, weekStart: string) => json<PlanTemplate>("POST", "/plan-templates", { body: { name, weekStart } }),
+  deleteTemplate: (id: string) => json<void>("DELETE", `/plan-templates/${enc(id)}`),
+  applyTemplate: (weekStart: string, templateId: string, mode: "replace" | "fill") =>
+    json<MealPlan>("POST", `/meal-plans/${weekStart}/apply-template`, { body: { templateId, mode } }),
   keepPlanDraft: (weekStart: string) => json<MealPlan>("POST", `/meal-plans/${weekStart}/draft/keep`),
   discardPlanDraft: (weekStart: string) => json<MealPlan>("POST", `/meal-plans/${weekStart}/draft/discard`),
 

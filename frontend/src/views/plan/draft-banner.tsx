@@ -67,8 +67,7 @@ export function DraftBanner({ plan, onRegenerate }: { plan: MealPlan; onRegenera
           <div className="flex flex-wrap gap-2">
             <Button
               onClick={async () => {
-                await keepDraft();
-                toast("Plan kept");
+                if (await keepDraft()) toast("Plan kept");
               }}
             >
               Keep
@@ -79,8 +78,7 @@ export function DraftBanner({ plan, onRegenerate }: { plan: MealPlan; onRegenera
             <Button
               variant="ghost"
               onClick={async () => {
-                await discardDraft();
-                toast("Draft discarded", { tone: "info" });
+                if (await discardDraft()) toast("Draft discarded", { tone: "info" });
               }}
             >
               Discard
