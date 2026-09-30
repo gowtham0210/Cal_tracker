@@ -10,12 +10,83 @@ import { COMMON_ALLERGENS, DIET_LABEL, type Budget, type DietType } from "@/lib/
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 type BudgetChoice = Budget | "amount";
 
+/** Common allergy chips, the user's own allergies, and a box to add one. Saves as it changes. */
+export function AllergyEditor({ idPrefix, className }: { idPrefix: string; className?: string }) {
+  const allergies = useStore((s) => s.profile.allergies);
+  const updateProfile = useStore((s) => s.updateProfile);
+  const [other, setOther] = useState("");
+  const custom = allergies.filter((a) => !(COMMON_ALLERGENS as readonly string[]).includes(a));
+  const setAllergies = (next: string[]) => updateProfile({ allergies: next });
+  const toggle = (a: string) => setAllergies(allergies.includes(a) ? allergies.filter((x) => x !== a) : [...allergies, a]);
+  const addOther = () => {
+    const a = other.trim().toLowerCase();
+    if (!a || a.length > 40) return;
+    if (!allergies.includes(a)) setAllergies([...allergies, a]);
+    setOther("");
+  };
+
+  return (
+    <div className={className}>
+      <div role="group" aria-label="Common allergies" className="flex flex-wrap gap-1.5">
+        {COMMON_ALLERGENS.map((a) => {
+          const on = allergies.includes(a);
+          return (
+            <button
+              key={a}
+              type="button"
+              aria-pressed={on}
+              onClick={() => toggle(a)}
+              className={clsx(
+                "inline-flex items-center gap-1 rounded-full border px-3 py-1 text-sm font-medium transition",
+                on ? "border-brand bg-brand-soft text-brand-strong" : "border-border text-muted hover:text-text",
+              )}
+            >
+              {on && <Check className="size-3.5" aria-hidden />}
+              {capitalize(a)}
+            </button>
+          );
+        })}
+      </div>
+      {custom.length > 0 && (
+        <ul aria-label="Your other allergies" className="mt-2 flex flex-wrap gap-1.5">
+          {custom.map((a) => (
+            <li key={a} className="inline-flex items-center gap-1 rounded-full bg-brand-soft py-1 pl-3 pr-1 text-sm font-medium text-brand-strong">
+              {capitalize(a)}
+              <button type="button" aria-label={`Remove ${a}`} onClick={() => setAllergies(allergies.filter((x) => x !== a))} className="grid size-5 place-items-center rounded-full hover:bg-brand/15">
+                <X className="size-3.5" aria-hidden />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="mt-3 flex items-end gap-2">
+        <Field label="Other allergy" htmlFor={`${idPrefix}-other-allergy`} className="flex-1">
+          <Input
+            id={`${idPrefix}-other-allergy`}
+            value={other}
+            maxLength={40}
+            placeholder="e.g. brinjal"
+            onChange={(e) => setOther(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter") return;
+              e.preventDefault();
+              addOther();
+            }}
+          />
+        </Field>
+        <Button variant="outline" onClick={addOther} disabled={!other.trim()}>
+          <Plus className="size-4" /> Add
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 /** Settings card for diet type, allergies and budget, which shape the planner. */
 export function FoodPreferences() {
   const profile = useStore((s) => s.profile);
   const updateProfile = useStore((s) => s.updateProfile);
-  const { dietType, allergies, budget, dailyBudget } = profile;
-  const [other, setOther] = useState("");
+  const { dietType, budget, dailyBudget } = profile;
   // "Daily amount" can be picked before an amount is typed.
   const [amountMode, setAmountMode] = useState(dailyBudget !== null);
   const [amount, setAmount] = useState(dailyBudget === null ? "" : String(dailyBudget));
@@ -27,16 +98,6 @@ export function FoodPreferences() {
     setAmount(dailyBudget === null ? "" : String(dailyBudget));
     if (dailyBudget !== null) setAmountMode(true);
   }
-
-  const custom = allergies.filter((a) => !(COMMON_ALLERGENS as readonly string[]).includes(a));
-  const setAllergies = (next: string[]) => updateProfile({ allergies: next });
-  const toggle = (a: string) => setAllergies(allergies.includes(a) ? allergies.filter((x) => x !== a) : [...allergies, a]);
-  const addOther = () => {
-    const a = other.trim().toLowerCase();
-    if (!a || a.length > 40) return;
-    if (!allergies.includes(a)) setAllergies([...allergies, a]);
-    setOther("");
-  };
 
   const choice: BudgetChoice = amountMode ? "amount" : budget;
   const chooseBudget = (v: BudgetChoice) => {
@@ -73,57 +134,7 @@ export function FoodPreferences() {
         <div>
           <p className="text-sm font-medium">Allergies</p>
           <p className="text-xs text-muted">Foods with these are flagged in your plan and library</p>
-          <div role="group" aria-label="Common allergies" className="mt-2 flex flex-wrap gap-1.5">
-            {COMMON_ALLERGENS.map((a) => {
-              const on = allergies.includes(a);
-              return (
-                <button
-                  key={a}
-                  type="button"
-                  aria-pressed={on}
-                  onClick={() => toggle(a)}
-                  className={clsx(
-                    "inline-flex items-center gap-1 rounded-full border px-3 py-1 text-sm font-medium transition",
-                    on ? "border-brand bg-brand-soft text-brand-strong" : "border-border text-muted hover:text-text",
-                  )}
-                >
-                  {on && <Check className="size-3.5" aria-hidden />}
-                  {capitalize(a)}
-                </button>
-              );
-            })}
-          </div>
-          {custom.length > 0 && (
-            <ul aria-label="Your other allergies" className="mt-2 flex flex-wrap gap-1.5">
-              {custom.map((a) => (
-                <li key={a} className="inline-flex items-center gap-1 rounded-full bg-brand-soft py-1 pl-3 pr-1 text-sm font-medium text-brand-strong">
-                  {capitalize(a)}
-                  <button type="button" aria-label={`Remove ${a}`} onClick={() => setAllergies(allergies.filter((x) => x !== a))} className="grid size-5 place-items-center rounded-full hover:bg-brand/15">
-                    <X className="size-3.5" aria-hidden />
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-          <div className="mt-3 flex items-end gap-2">
-            <Field label="Other allergy" htmlFor="s-other-allergy" className="flex-1">
-              <Input
-                id="s-other-allergy"
-                value={other}
-                maxLength={40}
-                placeholder="e.g. brinjal"
-                onChange={(e) => setOther(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key !== "Enter") return;
-                  e.preventDefault();
-                  addOther();
-                }}
-              />
-            </Field>
-            <Button variant="outline" onClick={addOther} disabled={!other.trim()}>
-              <Plus className="size-4" /> Add
-            </Button>
-          </div>
+          <AllergyEditor idPrefix="s" className="mt-2" />
         </div>
 
         <div>

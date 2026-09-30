@@ -91,6 +91,12 @@ function serial<T>(key: string, task: () => Promise<T>): Promise<T> {
   return next;
 }
 
+/** Resolves once the profile saves queued so far have finished (whether or not they worked). */
+export const profileSaved = () => (queues.get("profile") ?? Promise.resolve()).then(
+  () => {},
+  () => {},
+);
+
 // New entries get a temporary id until the server answers; later edits wait for the real one.
 const pendingIds = new Map<string, Promise<string>>();
 const tempId = () => `tmp-${Math.random().toString(36).slice(2, 10)}`;

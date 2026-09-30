@@ -116,6 +116,45 @@ for (const meal of ["breakfast", "lunch", "dinner", "snack"] as const) {
   });
 }
 
+/* ---------- Plan generation: allergens, diet, tolerance, cuisine ---------- */
+const planDay = await import("../src/ai/prompts/plan-day.js");
+const gen = await import("../src/lib/plan-generate.js");
+const { buildPlan } = await import("../src/lib/plan.js");
+const { CUISINE_STYLES } = await import("../src/lib/curated-foods.js");
+const planCases = [
+  { name: "veg, dairy allergy, tamil-nadu", dietType: "veg", allergies: ["dairy"], cuisine: "tamil-nadu", calorieGoal: 1800 },
+  { name: "eggetarian, gluten allergy, north-indian", dietType: "eggetarian", allergies: ["gluten"], cuisine: "north-indian", calorieGoal: 1700 },
+  { name: "non-veg, peanut and brinjal, south-indian", dietType: "non-veg", allergies: ["peanut", "brinjal"], cuisine: "south-indian", calorieGoal: 2000 },
+] as const;
+const WEEK = "2026-10-05";
+for (const [n, c] of planCases.entries()) {
+  await evalCase(`plan: ${c.name}`, async () => {
+    const id = `eval-plan-${n}`;
+    db.prepare("INSERT INTO users (id, email, name) VALUES (?, ?, 'Eval')").run(id, `${id}@example.test`);
+    saveProfile(id, { ...demo.profile, timeZone: "UTC", cuisine: c.cuisine, calorieGoal: c.calorieGoal, dietType: c.dietType, allergies: [...c.allergies], budget: "medium", dailyBudget: null });
+    const p = getProfile(id)!;
+    const pool = gen.candidates(id, p, "mix");
+
+    // The model's own picks, before the server corrects portions.
+    const raw = await llm().json({ messages: planDay.messages(gen.dayFacts(p, "mix", WEEK, pool, [])), name: "plan_day", jsonSchema: planDay.jsonSchema(pool.map((f) => f.id)), schema: planDay.schema, maxTokens: 4000, timeoutMs: 45_000 }, { prompt: `eval:${planDay.PROMPT}` });
+    const byId = new Map(pool.map((f) => [f.id, f]));
+    const rawKcal = raw.items.reduce((s, i) => s + (byId.get(i.foodId)?.calories ?? 0) * i.quantity, 0);
+    const rawMeals = new Set(raw.items.map((i) => i.meal));
+
+    await gen.fillDraft(gen.prepareDraft(id, p, WEEK, "mix"), [WEEK, "2026-10-06", "2026-10-07"]);
+    const plan = buildPlan(id, WEEK, p.calorieGoal, p.allergies);
+    const planned = plan.days.filter((d) => d.status.state !== "empty");
+    const unsafe = plan.items.filter((i) => i.food.allergyConflicts.length > 0 || !gen.isSafe(db.prepare("SELECT * FROM library_foods WHERE id = ?").get(i.food.id) as Parameters<typeof gen.isSafe>[0], p));
+    const offStyle = plan.items.filter((i) => i.food.source === "curated" && !CUISINE_STYLES[c.cuisine].includes(i.food.cuisine as never));
+    const onTarget = planned.filter((d) => d.status.state === "on-target").length;
+    check(
+      `plan: ${c.name}`,
+      plan.source === "ai" && planned.length === 3 && onTarget === 3 && unsafe.length === 0 && offStyle.length === 0 && Math.abs(rawKcal - c.calorieGoal) <= c.calorieGoal * 0.2 && ["breakfast", "lunch", "dinner"].every((m) => rawMeals.has(m as never)),
+      `source ${plan.source}; raw ${Math.round(rawKcal)} kcal for ${c.calorieGoal}; ${onTarget}/3 on target; unsafe ${unsafe.map((i) => i.food.name).join(", ") || "none"}; off-style ${offStyle.length}; day 1: ${plan.items.filter((i) => i.date === WEEK).map((i) => `${i.food.name} ×${i.quantity}`).join("; ")}`,
+    );
+  });
+}
+
 /* ---------- Report ---------- */
 const passed = results.filter((r) => r.pass).length;
 for (const r of results) console.log(`${r.pass ? "PASS" : "FAIL"}  ${r.name}\n      ${r.detail}`);

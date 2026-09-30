@@ -1,7 +1,7 @@
 "use client";
 
 import clsx from "clsx";
-import { BookOpen, Check, ChevronLeft, ChevronRight, Copy, Eraser, Loader2, PanelLeftClose, PencilLine } from "lucide-react";
+import { BookOpen, Check, ChevronLeft, ChevronRight, Copy, Eraser, Loader2, PanelLeftClose, PencilLine, Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button, Card, PageHeader, Sheet, Skeleton } from "@/components/ui";
 import type { MenuItem } from "@/components/ui/menu";
@@ -13,7 +13,9 @@ import { longDay, mondayOf, weekLabel } from "@/lib/week";
 import { AddFoodSheet, type SlotTarget } from "./add-food-sheet";
 import { CopyDaySheet } from "./copy-day-sheet";
 import { DayView } from "./day-view";
+import { DraftBanner } from "./draft-banner";
 import { FoodLibrary } from "./food-library";
+import { GenerateSheet } from "./generate-sheet";
 import { ItemSheet } from "./item-sheet";
 import { DraggableFood, PlanDnd } from "./plan-dnd";
 import { useUndoable } from "./use-undoable";
@@ -55,12 +57,23 @@ function SaveState() {
   );
 }
 
-function StartCards({ onBuild }: { onBuild: () => void }) {
+function StartCards({ onBuild, onGenerate }: { onBuild: () => void; onGenerate: () => void }) {
   return (
     <Card>
       <h2 className="font-semibold">This week is empty</h2>
       <p className="mt-1 text-sm text-muted">How would you like to start?</p>
       <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <button
+          type="button"
+          onClick={onGenerate}
+          className="flex flex-col items-start gap-2 rounded-2xl border border-brand/40 bg-brand-soft/40 p-5 text-left transition hover:border-brand"
+        >
+          <span className="grid size-10 place-items-center rounded-xl bg-brand-soft text-brand-strong">
+            <Sparkles className="size-5" aria-hidden />
+          </span>
+          <span className="font-semibold">Generate with AI</span>
+          <span className="text-sm text-muted">A draft week from your usual foods and calorie goal, ready in moments.</span>
+        </button>
         <button
           type="button"
           onClick={onBuild}
@@ -85,6 +98,7 @@ export function PlanView() {
   const [addTo, setAddTo] = useState<SlotTarget | null>(null);
   const [librarySheet, setLibrarySheet] = useState(false);
   const [copyFrom, setCopyFrom] = useState<string | null>(null);
+  const [generateOpen, setGenerateOpen] = useState(false);
   const undoable = useUndoable();
   const setDayItems = usePlan((s) => s.setDay);
   const wide = useMediaQuery("(min-width: 1024px)");
@@ -92,7 +106,7 @@ export function PlanView() {
   const [libraryPanel, setLibraryPanel] = useState<boolean | null>(null);
   const showPanel = wide && (libraryPanel ?? roomy);
 
-  const { plan, loading, error, load } = usePlan();
+  const { plan, loading, error, load, generating, lastGenerate, generate } = usePlan();
   useEffect(() => void load(monday), [monday, load]);
   // Once a week has had food in it, keep showing the planner even if it's cleared, so the user
   // keeps their place (and the Undo toast still makes sense).
@@ -118,7 +132,8 @@ export function PlanView() {
       { label: "Clear day", icon: <Eraser className="size-4" />, danger: true, disabled: !hasFood, onSelect: () => undoable([date], () => setDayItems(date, []), `Cleared ${longDay(date)}`) },
     ];
   };
-  const empty = plan && plan.items.length === 0 && !building[monday];
+  const empty = plan && plan.items.length === 0 && !building[monday] && generating?.weekStart !== monday;
+  const regenerate = () => (lastGenerate ? void generate(lastGenerate) : setGenerateOpen(true));
 
   return (
     <PlanDnd>
@@ -142,6 +157,11 @@ export function PlanView() {
             action={
               <div className="flex flex-wrap items-center gap-2">
                 <WeekSwitcher monday={monday} onChange={changeWeek} />
+              {!empty && (
+                <Button variant="outline" onClick={() => setGenerateOpen(true)} disabled={!!generating}>
+                  <Sparkles className="size-4" /> Generate
+                </Button>
+              )}
                 {!showPanel && (
                   <Button variant="outline" aria-expanded={false} onClick={() => (wide ? setLibraryPanel(true) : setLibrarySheet(true))}>
                     <BookOpen className="size-4" /> Food library
@@ -165,10 +185,11 @@ export function PlanView() {
               <Skeleton className="h-96" />
             </div>
           ) : empty ? (
-            <StartCards onBuild={() => setBuilding((b) => ({ ...b, [monday]: true }))} />
+            <StartCards onBuild={() => setBuilding((b) => ({ ...b, [monday]: true }))} onGenerate={() => setGenerateOpen(true)} />
           ) : (
             <>
-              <WeekSummary plan={plan} />
+              <DraftBanner plan={plan} onRegenerate={regenerate} />
+            <WeekSummary plan={plan} />
               {wide ? (
                 <WeekGrid plan={plan} onOpen={(i) => setPortionFor(i.id)} onAdd={setAddTo} dayActions={dayActions} />
               ) : (
@@ -184,6 +205,7 @@ export function PlanView() {
         <AddFoodSheet target={addTo} onClose={() => setAddTo(null)} />
         <ItemSheet item={portionItem} onClose={() => setPortionFor(null)} />
         <CopyDaySheet from={copyFrom} onClose={() => setCopyFrom(null)} />
+      <GenerateSheet open={generateOpen} onClose={() => setGenerateOpen(false)} defaultDay={day} />
       </div>
     </PlanDnd>
   );

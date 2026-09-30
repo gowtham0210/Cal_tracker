@@ -1,7 +1,10 @@
 import { Router, type Request } from "express";
 import { z } from "zod";
-import { addItem, buildPlan, copyDay, copyItem, removeItem, setDay, updateItem } from "../lib/plan.js";
+import { addItem, buildPlan, checkInWeek, copyDay, copyItem, removeItem, setDay, updateItem, weekDates } from "../lib/plan.js";
+import { discardDraft, fillDraft, keepDraft, prepareDraft } from "../lib/plan-generate.js";
 import { body, date, mealType, parse, uuid } from "../http/validate.js";
+import { HttpError, type Problem } from "../http/problem.js";
+import { aiRateLimit } from "./coach.js";
 import { requireProfile } from "./profile.js";
 
 export const monday = date.refine((d) => new Date(`${d}T00:00:00Z`).getUTCDay() === 1, "Must be a Monday.");
@@ -83,5 +86,64 @@ plans.post("/:weekStart/days/:date/copy", (req, res) => {
   requireProfile(res.locals.userId);
   const { to, mode } = parse(copyDayInput, req.body);
   copyDay(res.locals.userId, weekStart, dayParam(req), to, mode);
+  res.json(planResponse(res.locals.userId, weekStart));
+});
+
+/* ---------------- Drafts ---------------- */
+
+const generateInput = body({
+  scope: z.enum(["week", "day"], "Must be week or day."),
+  date: date.optional(),
+  mode: z.enum(["usual", "mix"], "Must be usual or mix."),
+}).superRefine((v, ctx) => {
+  if (v.scope === "day" && !v.date) ctx.addIssue({ code: "custom", path: ["date"], message: "Choose the day to plan." });
+});
+
+// Days are planned one at a time. With Accept: text/event-stream, each is sent as it is saved
+// (`day` events carrying the plan so far), then `done` with the finished draft.
+plans.post("/:weekStart/generate", aiRateLimit, async (req, res) => {
+  const weekStart = weekParam(req);
+  const profile = requireProfile(res.locals.userId);
+  const input = parse(generateInput, req.body);
+  if (input.scope === "day") checkInWeek(weekStart, input.date!);
+  const dates = input.scope === "day" ? [input.date!] : weekDates(weekStart);
+  const userId = res.locals.userId;
+  const run = prepareDraft(userId, profile, weekStart, input.mode);
+
+  if (req.accepts(["application/json", "text/event-stream"]) !== "text/event-stream") {
+    await fillDraft(run, dates);
+    res.json(planResponse(userId, weekStart));
+    return;
+  }
+  const abort = new AbortController();
+  res.on("close", () => {
+    if (!res.writableFinished) abort.abort();
+  });
+  res.status(200).set({ "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-cache", Connection: "keep-alive", "X-Accel-Buffering": "no" });
+  res.flushHeaders();
+  const send = (event: string, data: unknown) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  try {
+    await fillDraft(run, dates, { onDay: (date) => void send("day", { date, plan: planResponse(userId, weekStart) }), signal: abort.signal });
+  } catch (err) {
+    // Headers are gone, so the failure is reported in the stream. The draft keeps the days already saved.
+    const e = err instanceof HttpError ? err : new HttpError(500, "internal", "Something went wrong while planning.");
+    send("error", { type: `https://lighter.app/problems/${e.slug}`, title: e.title, status: e.status, detail: e.detail } satisfies Problem);
+    res.end();
+    return;
+  }
+  if (abort.signal.aborted) return;
+  send("done", planResponse(userId, weekStart));
+  res.end();
+});
+
+plans.post("/:weekStart/draft/keep", (req, res) => {
+  const weekStart = weekParam(req);
+  keepDraft(res.locals.userId, weekStart);
+  res.json(planResponse(res.locals.userId, weekStart));
+});
+
+plans.post("/:weekStart/draft/discard", (req, res) => {
+  const weekStart = weekParam(req);
+  discardDraft(res.locals.userId, weekStart);
   res.json(planResponse(res.locals.userId, weekStart));
 });

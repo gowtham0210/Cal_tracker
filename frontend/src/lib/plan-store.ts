@@ -1,10 +1,11 @@
 "use client";
 
 import { create } from "zustand";
-import { api, ApiError, type LibraryFood, type MealPlan, type PlanItem, type PlanItemPatch } from "./api";
+import { api, ApiError, type GenerateRequest, type LibraryFood, type MealPlan, type PlanItem, type PlanItemPatch } from "./api";
 import { computePlan, renumber } from "./plan-math";
-import { reportSyncError } from "./store";
+import { profileSaved, reportSyncError } from "./store";
 import type { MealType } from "./types";
+import { weekDates } from "./week";
 
 /**
  * The plan for the week on screen. Changes apply instantly (recomputed with the server's rules),
@@ -21,6 +22,10 @@ interface PlanState {
   pending: number;
   /** True once anything has been saved in this session, to show the Saved state. */
   touched: boolean;
+  /** While a draft is being generated: the days asked for and those already filled. */
+  generating: { weekStart: string; dates: string[]; done: string[] } | null;
+  /** The last generate request, so Regenerate can repeat it. */
+  lastGenerate: GenerateRequest | null;
 
   load: (weekStart: string) => Promise<void>;
   addItem: (date: string, meal: MealType, food: LibraryFood, quantity?: number) => string;
@@ -29,6 +34,10 @@ interface PlanState {
   copyItem: (id: string, to: { date: string; meal: MealType }) => void;
   setDay: (date: string, items: PlanItem[]) => void;
   copyDay: (from: string, to: string[], mode: "replace" | "add") => void;
+
+  generate: (req: GenerateRequest) => Promise<void>;
+  keepDraft: () => Promise<void>;
+  discardDraft: () => Promise<void>;
 
   /** The foods planned on some days, to undo a change later with restoreDays. */
   snapshotDays: (dates: string[]) => DaySnapshot;
@@ -68,6 +77,25 @@ export const usePlan = create<PlanState>()((set, get) => {
       });
   }
 
+  /** Runs a whole-plan server step after pending saves, and adopts the plan it returns. */
+  async function step(run: (weekStart: string) => Promise<MealPlan>, failure: string) {
+    const { weekStart } = get();
+    if (!weekStart) return;
+    set({ pending: get().pending + 1, touched: true });
+    const next = queue.then(() => run(weekStart));
+    queue = next.catch(() => {});
+    try {
+      const plan = await next;
+      // As with edits, only adopt it when nothing newer is waiting.
+      if (get().weekStart === weekStart && get().pending === 1) set({ plan });
+    } catch (err) {
+      if (!(err instanceof ApiError && err.status === 401)) reportSyncError(err instanceof ApiError ? (err.problem.detail ?? err.problem.title) : failure);
+      void get().load(weekStart);
+    } finally {
+      set({ pending: get().pending - 1 });
+    }
+  }
+
   return {
     weekStart: null,
     plan: null,
@@ -75,6 +103,8 @@ export const usePlan = create<PlanState>()((set, get) => {
     error: null,
     pending: 0,
     touched: false,
+    generating: null,
+    lastGenerate: null,
 
     load: async (weekStart) => {
       set({ weekStart, loading: get().plan?.weekStart !== weekStart, error: null });
@@ -147,6 +177,24 @@ export const usePlan = create<PlanState>()((set, get) => {
         (week) => api.copyPlanDay(week, from, to, mode),
       ).catch(() => {});
     },
+
+    generate: async (req) => {
+      const { weekStart } = get();
+      if (!weekStart) return;
+      set({ generating: { weekStart, dates: req.scope === "day" && req.date ? [req.date] : weekDates(weekStart), done: [] }, lastGenerate: req });
+      // Each day is shown as soon as the server has saved it, unless the user is editing meanwhile
+      // (their changes are queued behind this and would be undone on screen).
+      const onDay = (date: string, plan: MealPlan) => {
+        const g = get().generating;
+        if (get().weekStart !== weekStart) return;
+        set({ generating: g && { ...g, done: [...g.done, date] }, ...(get().pending === 1 ? { plan } : {}) });
+      };
+      // Preferences changed in the Generate sheet must reach the server first: allergies are hard rules.
+      await step(async (week) => (await profileSaved(), api.generatePlan(week, req, onDay)), "Couldn't plan your week.");
+      set({ generating: null });
+    },
+    keepDraft: () => step((week) => api.keepPlanDraft(week), "Couldn't keep the draft."),
+    discardDraft: () => step((week) => api.discardPlanDraft(week), "Couldn't discard the draft."),
 
     snapshotDays: (dates) => Object.fromEntries(dates.map((d) => [d, (get().plan?.items ?? []).filter((i) => i.date === d)])),
     restoreDays: (snapshot) => {

@@ -1384,6 +1384,104 @@ paths:
         "404":
           $ref: "#/components/responses/ProfileRequired"
 
+  /meal-plans/{weekStart}/generate:
+    parameters:
+      - $ref: "#/components/parameters/weekStart"
+    post:
+      tags: [Planner]
+      operationId: generatePlan
+      summary: Draft a week or one day
+      description: |
+        Plans each day from library foods that fit the profile's diet type and avoid its allergies,
+        then brings every day within the calorie tolerance by adjusting portions. The AI only picks
+        foods and servings; any unknown or unsafe food it returns is dropped. When the AI is
+        unavailable the rest of the days are built by simple rules from the user's usual foods,
+        and the plan's `source` is `rules` if any day was built that way. A day with no safe foods
+        to choose from is left as it was.
+
+        The result is a draft (`status: draft`) that can be edited like any plan, then kept or
+        discarded. Discarding puts back exactly what the week held before the first generate.
+        Generating again while a draft is open replaces those days in the same draft.
+
+        `mode: usual` uses the user's own foods, topped up with curated dishes in their food style
+        for meals where they have fewer than two; `mix` adds those dishes to every meal.
+
+        With `Accept: text/event-stream`, days are sent as they're saved: a `day` event per day
+        (`{ date, plan }`, the plan so far), then `done` with the finished draft. A failure after
+        the stream starts is an `error` event holding a Problem.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [scope, mode]
+              properties:
+                scope:
+                  type: string
+                  enum: [week, day]
+                date:
+                  $ref: "#/components/schemas/Date"
+                  description: The day to plan. Required when `scope` is `day`.
+                mode:
+                  type: string
+                  enum: [usual, mix]
+                  description: Mostly the user's usual foods, or mix in dishes they haven't tried.
+      responses:
+        "200":
+          description: The draft.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MealPlan"
+            text/event-stream:
+              schema:
+                type: string
+                description: "`day` events with `{ date, plan }`, then `done` with the MealPlan, or `error` with a Problem."
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/ProfileRequired"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /meal-plans/{weekStart}/draft/keep:
+    parameters:
+      - $ref: "#/components/parameters/weekStart"
+    post:
+      tags: [Planner]
+      operationId: keepPlanDraft
+      summary: Keep the draft
+      description: The draft, with any edits, becomes the week's plan.
+      responses:
+        "200":
+          $ref: "#/components/responses/MealPlan"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/ProfileRequired"
+        "409":
+          $ref: "#/components/responses/NoDraft"
+  /meal-plans/{weekStart}/draft/discard:
+    parameters:
+      - $ref: "#/components/parameters/weekStart"
+    post:
+      tags: [Planner]
+      operationId: discardPlanDraft
+      summary: Discard the draft
+      description: Puts back exactly what the week held before the draft, including its source.
+      responses:
+        "200":
+          $ref: "#/components/responses/MealPlan"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/ProfileRequired"
+        "409":
+          $ref: "#/components/responses/NoDraft"
+
   # ---------------------------------------------------------------- Export
   /exports/{kind}:
     get:
@@ -1609,6 +1707,12 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/MealPlan"
+    NoDraft:
+      description: There's no draft plan for this week to keep or discard.
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
     TooManyRequests:
       description: Too many requests. Wait for `Retry-After` seconds.
       headers:
@@ -2700,7 +2804,9 @@ components:
         status:
           type: string
           enum: [active, draft]
-          description: A draft was generated and has not been kept or discarded yet.
+          description: |
+            `draft` while a generated plan hasn't been kept or discarded yet. A draft can be
+            edited like any plan.
         source:
           type: [string, "null"]
           enum: [manual, ai, rules, template, null]

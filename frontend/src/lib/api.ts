@@ -298,6 +298,42 @@ const enc = encodeURIComponent;
 
 /* ---------------- Operations ---------------- */
 
+export interface GenerateRequest {
+  scope: "week" | "day";
+  date?: string;
+  mode: "usual" | "mix";
+}
+
+/**
+ * Reads a server-sent event stream: `onEvent` gets each event, `done` resolves with its data and
+ * `error` rejects with the Problem it carries.
+ */
+async function readEvents<T>(res: Response, onEvent: (event: string, data: unknown) => void, interrupted: string): Promise<T> {
+  const reader = res.body!.pipeThrough(new TextDecoderStream()).getReader();
+  let buffer = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += value;
+    let end: number;
+    while ((end = buffer.indexOf("\n\n")) >= 0) {
+      const block = buffer.slice(0, end);
+      buffer = buffer.slice(end + 2);
+      let event = "message";
+      let data = "";
+      for (const line of block.split("\n")) {
+        if (line.startsWith("event:")) event = line.slice(6).trim();
+        else if (line.startsWith("data:")) data += line.slice(5).trim();
+      }
+      const payload = data ? JSON.parse(data) : null;
+      if (event === "done") return payload as T;
+      if (event === "error") throw new ApiError(payload);
+      onEvent(event, payload);
+    }
+  }
+  throw new ApiError({ title: interrupted, status: 0 });
+}
+
 export const api = {
   register: (input: RegisterRequest) => json<Session>("POST", "/auth/register", { body: input }),
   login: (input: { email: string; password: string }) => json<Session>("POST", "/auth/login", { body: input }),
@@ -355,30 +391,7 @@ export const api = {
   async askCoach(text: string, onDelta: (piece: string) => void, signal?: AbortSignal): Promise<{ question: CoachMessage; answer: CoachMessage }> {
     const res = await send("POST", "/coach/messages", { body: { text }, accept: "text/event-stream", signal });
     if (!res.headers.get("content-type")?.startsWith("text/event-stream")) return res.json();
-
-    const reader = res.body!.pipeThrough(new TextDecoderStream()).getReader();
-    let buffer = "";
-    for (;;) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffer += value;
-      let end: number;
-      while ((end = buffer.indexOf("\n\n")) >= 0) {
-        const block = buffer.slice(0, end);
-        buffer = buffer.slice(end + 2);
-        let event = "message";
-        let data = "";
-        for (const line of block.split("\n")) {
-          if (line.startsWith("event:")) event = line.slice(6).trim();
-          else if (line.startsWith("data:")) data += line.slice(5).trim();
-        }
-        const payload = data ? JSON.parse(data) : null;
-        if (event === "delta") onDelta(payload.text);
-        else if (event === "done") return payload;
-        else if (event === "error") throw new ApiError(payload);
-      }
-    }
-    throw new ApiError({ title: "The answer was interrupted. Please try again.", status: 0 });
+    return readEvents(res, (event, payload) => void (event === "delta" && onDelta((payload as { text: string }).text)), "The answer was interrupted. Please try again.");
   },
 
   library: (opts: { tab?: LibraryTab; meal?: MealType; q?: string } = {}) => {
@@ -396,6 +409,18 @@ export const api = {
     json<MealPlan>("PUT", `/meal-plans/${weekStart}/days/${date}`, { body: { items } }),
   copyPlanDay: (weekStart: string, date: string, to: string[], mode: "replace" | "add") =>
     json<MealPlan>("POST", `/meal-plans/${weekStart}/days/${date}/copy`, { body: { to, mode } }),
+
+  /** Drafts days one at a time, calling `onDay` with the plan so far as each is saved. */
+  async generatePlan(weekStart: string, body: GenerateRequest, onDay: (date: string, plan: MealPlan) => void, signal?: AbortSignal): Promise<MealPlan> {
+    const res = await send("POST", `/meal-plans/${weekStart}/generate`, { body, accept: "text/event-stream", signal });
+    if (!res.headers.get("content-type")?.startsWith("text/event-stream")) return res.json();
+    return readEvents(res, (event, payload) => {
+      const p = payload as { date: string; plan: MealPlan };
+      if (event === "day") onDay(p.date, p.plan);
+    }, "Planning was interrupted. Please try again.");
+  },
+  keepPlanDraft: (weekStart: string) => json<MealPlan>("POST", `/meal-plans/${weekStart}/draft/keep`),
+  discardPlanDraft: (weekStart: string) => json<MealPlan>("POST", `/meal-plans/${weekStart}/draft/discard`),
 
   /** Downloads an export as a file. */
   async exportCsv(kind: string): Promise<{ filename: string; blob: Blob }> {
