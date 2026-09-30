@@ -1,0 +1,42 @@
+# Production stack on the VPS, in /opt/cal-tracker. The deploy workflow copies this file there
+# and runs it with IMAGE_TAG set; secrets come from /opt/cal-tracker/.env.prod.
+#
+# The containers join the yercaud project's network, whose nginx container (the only one
+# publishing ports 80/443) routes cal.aiwithgowtham.in and cal-api.aiwithgowtham.in here and
+# issues their certificates. Its server blocks are in nginx/cal-tracker.conf.
+services:
+  cal-backend:
+    image: ghcr.io/gowtham0210/cal-tracker-backend:${IMAGE_TAG:-latest}
+    container_name: cal-tracker-backend
+    restart: unless-stopped
+    networks:
+      - yercaud_default
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DB_PATH: /data/lighter.db
+      CORS_ORIGIN: https://cal.aiwithgowtham.in
+      TRUST_PROXY: uniquelocal
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env.prod}
+      AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT:-}
+      AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY:-}
+      AZURE_OPENAI_DEPLOYMENT: ${AZURE_OPENAI_DEPLOYMENT:-}
+      AZURE_OPENAI_API_VERSION: ${AZURE_OPENAI_API_VERSION:-v1}
+    volumes:
+      - cal_data:/data
+
+  cal-frontend:
+    image: ghcr.io/gowtham0210/cal-tracker-frontend:${IMAGE_TAG:-latest}
+    container_name: cal-tracker-frontend
+    restart: unless-stopped
+    depends_on:
+      - cal-backend
+    networks:
+      - yercaud_default
+
+networks:
+  yercaud_default:
+    external: true
+
+volumes:
+  cal_data:
