@@ -1191,6 +1191,88 @@ paths:
           $ref: "#/components/responses/ValidationFailed"
         "401":
           $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [Library]
+      operationId: addLibraryFood
+      summary: Add a new food to the library
+      description: |
+        Saves a "Try new" suggestion the user has reviewed (and possibly edited) as a library food
+        with source `ai`. From then on its numbers are fixed: logging a food with the same name
+        doesn't change them. `diet` and `allergens` are checked against the name, keeping the
+        stricter diet and every allergen either suggests.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NewLibraryFood"
+      responses:
+        "201":
+          description: Saved.
+          headers:
+            Location:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryFood"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/ProfileRequired"
+        "409":
+          description: A food with this name is already in the library.
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /food-library/suggestions:
+    post:
+      tags: [Library]
+      operationId: suggestNewFoods
+      summary: Suggest new foods to try
+      description: |
+        Up to 5 foods the user doesn't have yet, each close to one they eat ("You eat poha, so try
+        upma"), with nutrition estimated by the AI and a confidence. Suggestions fit the user's
+        diet type, avoid their allergies (both re-checked from the name) and follow their food
+        style and budget. Nothing is saved: add one with `POST /food-library`.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                meal:
+                  $ref: "#/components/schemas/MealType"
+      responses:
+        "200":
+          description: Suggestions, not yet in the library.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data]
+                properties:
+                  data:
+                    type: array
+                    maxItems: 12
+                    items:
+                      $ref: "#/components/schemas/NewFoodSuggestion"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/ProfileRequired"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "503":
+          $ref: "#/components/responses/AiUnavailable"
 
   # ---------------------------------------------------------------- Meal plans
   /meal-plans/{weekStart}:
@@ -2833,6 +2915,86 @@ components:
               $ref: "#/components/schemas/Nutrition"
             dinner:
               $ref: "#/components/schemas/Nutrition"
+    NewLibraryFood:
+      type: object
+      additionalProperties: false
+      required: [name, meal, serving, calories, protein, carbs, fat]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 60
+        meal:
+          $ref: "#/components/schemas/MealType"
+        serving:
+          type: string
+          minLength: 1
+          maxLength: 60
+        calories:
+          $ref: "#/components/schemas/Kcal"
+          maximum: 5000
+          description: Per serving.
+        protein:
+          $ref: "#/components/schemas/Grams"
+        carbs:
+          $ref: "#/components/schemas/Grams"
+        fat:
+          $ref: "#/components/schemas/Grams"
+        confidence:
+          type: string
+          enum: [high, medium, low]
+          default: medium
+        cuisine:
+          type: [string, "null"]
+          enum: [tamil-nadu, south-indian, north-indian, null]
+        diet:
+          oneOf:
+            - $ref: "#/components/schemas/DietType"
+            - type: "null"
+        allergens:
+          type: array
+          maxItems: 12
+          items:
+            type: string
+    NewFoodSuggestion:
+      type: object
+      additionalProperties: false
+      required: [name, meal, serving, calories, protein, carbs, fat, confidence, cuisine, diet, allergens, basedOn, reason]
+      properties:
+        name:
+          type: string
+        meal:
+          $ref: "#/components/schemas/MealType"
+        serving:
+          type: string
+        calories:
+          $ref: "#/components/schemas/Kcal"
+          description: Per serving, estimated by the AI.
+        protein:
+          $ref: "#/components/schemas/Grams"
+        carbs:
+          $ref: "#/components/schemas/Grams"
+        fat:
+          $ref: "#/components/schemas/Grams"
+        confidence:
+          type: string
+          enum: [high, medium, low]
+          description: "`low` also when the calories don't add up from the macros."
+        cuisine:
+          type: [string, "null"]
+        diet:
+          $ref: "#/components/schemas/DietType"
+        allergens:
+          type: array
+          items:
+            type: string
+        basedOn:
+          type: [string, "null"]
+          description: The library food it's close to.
+          examples: [Poha]
+        reason:
+          type: string
+          maxLength: 60
     PlanSwap:
       type: object
       additionalProperties: false

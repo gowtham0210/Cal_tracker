@@ -32,9 +32,12 @@ const DIETS_FOR: Record<Profile["dietType"], (LibraryRow["diet"])[]> = {
 };
 const ingredientNames = (r: LibraryRow) => (r.ingredients ? (JSON.parse(r.ingredients) as { name: string }[]).map((i) => i.name) : []);
 
+/** Whether a food's diet fits the user's diet type. */
+export const dietAllowed = (dietType: Profile["dietType"], diet: LibraryRow["diet"]) => DIETS_FOR[dietType].includes(diet);
+
 /** Library foods the user can safely eat: within their diet type and free of their allergies. */
 export function isSafe(r: LibraryRow, p: Pick<Profile, "dietType" | "allergies">) {
-  if (!DIETS_FOR[p.dietType].includes(r.diet)) return false;
+  if (!dietAllowed(p.dietType, r.diet)) return false;
   return allergyConflicts({ name: r.name, allergens: JSON.parse(r.allergens) as string[], ingredients: ingredientNames(r) }, p.allergies).length === 0;
 }
 

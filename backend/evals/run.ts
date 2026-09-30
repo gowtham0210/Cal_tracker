@@ -187,6 +187,31 @@ for (const [n, c] of [
   });
 }
 
+/* ---------- Try new: close to usual foods, safe, in style ---------- */
+const { suggestNewFoods } = await import("../src/lib/new-foods.js");
+for (const [n, c] of [
+  { name: "veg, peanut allergy, tamil-nadu", dietType: "veg", allergies: ["peanut"], cuisine: "tamil-nadu", logged: ["Poha", "Ven pongal", "Curd rice"] },
+  { name: "eggetarian, dairy allergy, north-indian", dietType: "eggetarian", allergies: ["dairy"], cuisine: "north-indian", logged: ["Aloo paratha", "Rajma chawal", "Masala omelette"] },
+].entries()) {
+  await evalCase(`new: ${c.name}`, async () => {
+    const id = `eval-new-${n}`;
+    db.prepare("INSERT INTO users (id, email, name) VALUES (?, ?, 'Eval')").run(id, `${id}@example.test`);
+    saveProfile(id, { ...demo.profile, timeZone: "UTC", cuisine: c.cuisine as "tamil-nadu", dietType: c.dietType as "veg", allergies: c.allergies, budget: "low", dailyBudget: null });
+    for (const name of c.logged) db.prepare("INSERT INTO food_entries (id, user_id, date, meal, name, calories, protein, carbs, fat) VALUES (?, ?, ?, 'breakfast', ?, 300, 8, 45, 8)").run(`${id}-${name}`, id, today, name);
+    const out = await suggestNewFoods(id, getProfile(id)!);
+    const grounded = out.filter((s) => s.basedOn).length;
+    const inStyle = out.filter((s) => s.cuisine === null || CUISINE_STYLES[c.cuisine as "tamil-nadu"].includes(s.cuisine as never)).length;
+    // Dishes whose usual recipe has the allergen, even though the name doesn't say so.
+    const HIDDEN: Record<string, RegExp> = { peanut: /lemon rice|poha|chitranna|puliyodarai|tamarind rice/i, dairy: /kheer|payasam|raita|paneer|kadhi|korma|malai/i };
+    const hidden = out.filter((s) => c.allergies.some((a) => HIDDEN[a]?.test(s.name)));
+    check(
+      `new: ${c.name}`,
+      out.length >= 3 && grounded >= out.length - 1 && inStyle >= out.length - 1 && hidden.length === 0 && out.every((s) => s.calories > 30 && s.calories < 1200),
+      (hidden.length ? `usually contains an allergen: ${hidden.map((s) => s.name).join(", ")}. ` : "") + out.map((s) => `${s.name} (${s.calories} kcal, ${s.confidence}, from ${s.basedOn}: ${s.reason})`).join("; "),
+    );
+  });
+}
+
 /* ---------- Report ---------- */
 const passed = results.filter((r) => r.pass).length;
 for (const r of results) console.log(`${r.pass ? "PASS" : "FAIL"}  ${r.name}\n      ${r.detail}`);

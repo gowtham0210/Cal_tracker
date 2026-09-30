@@ -8,15 +8,17 @@ import { api, ApiError, type LibraryFood, type LibraryTab } from "@/lib/api";
 import { useStore } from "@/lib/store";
 import { CUISINE_LABEL, type MealType } from "@/lib/types";
 import { MEAL_EMOJI, MEAL_LABEL, MEALS } from "@/lib/ui";
+import { NewFoodSuggestions } from "./new-food-suggestions";
 import { AllergyWarning } from "./allergy-warning";
 
-const TABS: { value: Exclude<LibraryTab, "all" | "new">; label: string }[] = [
+const TABS: { value: Exclude<LibraryTab, "all">; label: string }[] = [
   { value: "usual", label: "Usual" },
   { value: "favorites", label: "Favorites" },
+  { value: "new", label: "Try new" },
 ];
 
 /** Fetches library foods for the current tab, meal and search, debouncing typing. */
-function useLibrary(tab: LibraryTab, meal: MealType | undefined, q: string) {
+function useLibrary(tab: LibraryTab, meal: MealType | undefined, q: string, version: number) {
   const [foods, setFoods] = useState<LibraryFood[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
@@ -34,7 +36,7 @@ function useLibrary(tab: LibraryTab, meal: MealType | undefined, q: string) {
       live = false;
       clearTimeout(t);
     };
-  }, [tab, meal, q]);
+  }, [tab, meal, q, version]);
   return { foods, error };
 }
 
@@ -49,12 +51,14 @@ export interface FoodLibraryProps {
 }
 
 export function FoodLibrary({ meal: initialMeal, renderAction, wrapCard, className }: FoodLibraryProps) {
-  const [tab, setTab] = useState<Exclude<LibraryTab, "all" | "new">>("usual");
+  const [tab, setTab] = useState<Exclude<LibraryTab, "all">>("usual");
+  // Bumped when a new food is saved, to reload the list.
+  const [version, setVersion] = useState(0);
   const [meal, setMeal] = useState<MealType | undefined>(initialMeal);
   const [q, setQ] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
   const cuisine = useStore((s) => s.profile?.cuisine ?? "tamil-nadu");
-  const { foods, error } = useLibrary(tab, meal, q);
+  const { foods, error } = useLibrary(tab, meal, q, version);
 
   // Group "usual" into the user's own foods and curated dishes, so it's clear where each comes from.
   const own = foods?.filter((f) => f.useCount > 0 || f.source !== "curated") ?? [];
@@ -136,6 +140,11 @@ export function FoodLibrary({ meal: initialMeal, renderAction, wrapCard, classNa
         aria-live="polite"
         aria-busy={!foods && !error}
       >
+        {tab === "new" && !searching && (
+          <div className="mb-4">
+            <NewFoodSuggestions meal={meal} onAdded={() => setVersion((v) => v + 1)} />
+          </div>
+        )}
         {error ? (
           <p role="alert" className="rounded-xl bg-surface-2 p-3 text-sm text-muted">
             {error}
@@ -148,7 +157,7 @@ export function FoodLibrary({ meal: initialMeal, renderAction, wrapCard, classNa
           </div>
         ) : foods.length === 0 ? (
           <p className="px-1 py-6 text-center text-sm text-muted">
-            {searching ? `No foods match "${q.trim()}".` : tab === "favorites" ? "No favorites yet. Star a food in your log to add it here." : "No foods yet."}
+            {searching ? `No foods match "${q.trim()}".` : tab === "favorites" ? "No favorites yet. Star a food in your log to add it here." : tab === "new" ? "No new foods yet. Ones you add from suggestions appear here." : "No foods yet."}
           </p>
         ) : tab === "usual" && !searching ? (
           <div className="space-y-4">

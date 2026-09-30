@@ -298,6 +298,25 @@ const enc = encodeURIComponent;
 
 /* ---------------- Operations ---------------- */
 
+export interface NewFoodSuggestion {
+  name: string;
+  meal: MealType;
+  serving: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  confidence: "high" | "medium" | "low";
+  cuisine: string | null;
+  diet: "veg" | "eggetarian" | "non-veg";
+  allergens: string[];
+  basedOn: string | null;
+  reason: string;
+}
+
+export type NewLibraryFood = Pick<NewFoodSuggestion, "name" | "meal" | "serving" | "calories" | "protein" | "carbs" | "fat"> &
+  Partial<Pick<NewFoodSuggestion, "confidence" | "cuisine" | "diet" | "allergens">>;
+
 export interface PlanSwap {
   food: LibraryFood;
   quantity: number;
@@ -408,6 +427,9 @@ export const api = {
     const qs = new URLSearchParams(Object.entries(opts).filter(([, v]) => v) as [string, string][]).toString();
     return json<{ data: LibraryFood[] }>("GET", `/food-library${qs ? `?${qs}` : ""}`).then((r) => r.data);
   },
+
+  suggestNewFoods: (meal?: MealType) => json<{ data: NewFoodSuggestion[] }>("POST", "/food-library/suggestions", { body: meal ? { meal } : {} }).then((r) => r.data),
+  addLibraryFood: (food: NewLibraryFood) => json<LibraryFood>("POST", "/food-library", { body: food }),
 
   plan: (weekStart: string) => json<MealPlan>("GET", `/meal-plans/${weekStart}`),
   addPlanItem: (weekStart: string, item: { date: string; meal: MealType; foodId: string; quantity: number }) =>
